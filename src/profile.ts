@@ -1,3 +1,4 @@
+// 问卷选项同时作为运行时校验的白名单，防止命令、旧数据库或后续 UI 写入未知值。
 export const GENDERS = ["男", "女"] as const;
 export const GOALS = ["减脂", "保持体型"] as const;
 export const DIET_EXERCISE_PREFERENCES = ["少吃躺平派", "吃动平衡派", "运动体验派"] as const;
@@ -75,6 +76,7 @@ function validateDistinct<T extends string>(name: string, values: T[], maximum: 
 }
 
 export function validateProfile(input: ProfileInput): void {
+  // UI 校验之外再做一次持久化前校验，确保所有 SQLite 写入都满足问卷规则。
   if (!isOneOf(input.gender, GENDERS)) throw new Error("性别无效");
   validateNumber("年龄", input.age, 18, 100, true);
   validateNumber("体重", input.weightKg, 20, 400);
@@ -110,6 +112,7 @@ export function calculateEstimate(profile: Pick<ProfileInput, "weightKg" | "body
   validateNumber("目标脂肪率", profile.targetBodyFatPct, 1, profile.bodyFatPct);
   validateNumber("每日总能量缺口", profile.dailyEnergyDeficitKcal, 300, 1000, true);
 
+  // 静态粗估：假设瘦体重不变，以体脂率反推目标体重；不作为医疗或精确体重变化预测。
   const leanMassKg = profile.weightKg * (1 - profile.bodyFatPct / 100);
   const targetWeightKg = leanMassKg / (1 - profile.targetBodyFatPct / 100);
   const fatLossKg = Math.max(0, profile.weightKg - targetWeightKg);
@@ -126,6 +129,7 @@ export function calculateEstimate(profile: Pick<ProfileInput, "weightKg" | "body
 }
 
 export function formatProfile(profile: Profile): string {
+  // /profile 与 get_current_profile 共用这一格式，避免用户和模型看到不一致的画像摘要。
   const estimate = calculateEstimate(profile);
   const days = estimate.estimatedDays === 0 ? "无需减脂天数估算" : `${estimate.estimatedDays} 天（约 ${estimate.estimatedWeeks} 周）`;
   return [

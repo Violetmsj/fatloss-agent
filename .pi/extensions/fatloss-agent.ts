@@ -6,6 +6,7 @@ import { formatProfile } from "../../src/profile.ts";
 import { runOnboarding } from "../../src/onboarding.ts";
 
 export default function fatlossAgentExtension(pi: ExtensionAPI) {
+  // 一个 pi 进程共享一个仓储连接，命令、自动建档和模型工具读取同一份 SQLite 画像。
   const repository = new ProfileRepository();
   let onboardingInProgress = false;
 
@@ -25,6 +26,7 @@ export default function fatlossAgentExtension(pi: ExtensionAPI) {
     }
   };
 
+  // 这是模型唯一可调用的工具；不注册文件或 shell 工具，限制助手只读取用户画像。
   pi.registerTool({
     name: "get_current_profile",
     label: "读取当前减脂画像",
@@ -56,6 +58,7 @@ export default function fatlossAgentExtension(pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
+    // 扩展加载阶段还不能调整工具集，必须等 session_start 运行时初始化完成后设置白名单。
     pi.setActiveTools(["get_current_profile"]);
     if (ctx.mode === "tui" && !repository.get()) {
       await startOnboarding(ctx);

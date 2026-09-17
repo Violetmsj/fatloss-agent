@@ -66,6 +66,7 @@ export class ProfileRepository {
     this.db = new DatabaseSync(databasePath);
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS profile (
+        -- 个人项目只保留当前画像；id = 1 让数据库层也强制单用户语义。
         id INTEGER PRIMARY KEY CHECK (id = 1),
         gender TEXT NOT NULL,
         age INTEGER NOT NULL,
@@ -112,6 +113,7 @@ export class ProfileRepository {
       input.dietExercisePreference,
       input.activityFrequency,
       input.jobType,
+      // SQLite 没有数组类型，问卷多选答案以 JSON 数组保存并在 fromRow 中还原。
       JSON.stringify(input.favoriteExercises),
       JSON.stringify(input.equipment),
       input.stairResponse,
@@ -143,6 +145,7 @@ export class ProfileRepository {
         updated_at = excluded.updated_at
     `);
 
+    // 覆盖画像必须原子化：任何一步失败都保留上一份完整画像。
     this.db.exec("BEGIN IMMEDIATE");
     try {
       statement.run(...values);
