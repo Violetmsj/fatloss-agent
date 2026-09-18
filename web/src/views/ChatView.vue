@@ -24,6 +24,7 @@ const renamingId = ref<string | null>(null);
 const renameValue = ref("");
 const copiedId = ref<string | null>(null);
 
+// useChat 负责把消息增量和工具事件合并进当前 UIMessage 列表，并提供停止生成能力。
 const { messages, status, error, sendMessage, stop } = useChat({
     id: conversationId,
     messages: [],
@@ -34,11 +35,13 @@ const currentConversation = computed(() => conversations.value.find((item) => it
 
 onMounted(async () => {
     try {
+        // 聊天是建档后的能力；直接访问会话 URL 时也必须执行一次画像前置检查。
         const profile = await api.getProfile();
         if (!profile.profile) {
             await router.replace("/onboarding");
             return;
         }
+        // 侧栏元数据和当前会话历史独立加载，历史会由后端过滤 thinking 并恢复工具卡片。
         const [list, history] = await Promise.all([api.listConversations(), api.getMessages(conversationId)]);
         conversations.value = list;
         messages.value = history;
@@ -72,6 +75,7 @@ async function saveRename(conversation: Conversation): Promise<void> {
 }
 
 async function handleSubmit(payload: PromptInputMessage): Promise<void> {
+    // 同一个按钮在生成期间承担“停止”职责，避免重复向同一会话提交 prompt。
     if (busy.value) {
         await stop();
         return;
@@ -92,6 +96,12 @@ async function copyMessage(message: UIMessage): Promise<void> {
 
 function isDynamicTool(part: UIMessage["parts"][number]): part is DynamicToolUIPart {
     return part.type === "dynamic-tool";
+}
+
+function hasToolInput(input: unknown): boolean {
+    // 无参数工具仍在协议中携带 {}，这里只隐藏没有阅读价值的参数区域。
+    if (!input || typeof input !== "object") return input !== undefined && input !== null;
+    return Object.keys(input).length > 0;
 }
 </script>
 
@@ -136,7 +146,7 @@ function isDynamicTool(part: UIMessage["parts"][number]): part is DynamicToolUIP
                                     <MessageResponse v-if="part.type === 'text'" :content="part.text" />
                                     <Tool v-else-if="isDynamicTool(part)" class="tool-card">
                                         <ToolHeader :type="part.type" :state="part.state" :tool-name="part.toolName" :title="part.title" />
-                                        <ToolContent><ToolInput :input="part.input" /><ToolOutput :output="part.output" :error-text="part.errorText" /></ToolContent>
+                                        <ToolContent><ToolInput v-if="hasToolInput(part.input)" :input="part.input" /><ToolOutput :output="part.output" :error-text="part.errorText" /></ToolContent>
                                     </Tool>
                                 </template>
                             </MessageContent>

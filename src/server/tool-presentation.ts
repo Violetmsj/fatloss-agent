@@ -1,4 +1,5 @@
 const TOOL_TITLES: Record<string, string> = {
+  get_current_time: "获取当前时间",
   get_current_profile: "读取减脂画像",
   update_current_profile: "更新减脂画像",
   search_fatloss_knowledge: "检索减脂知识库",
@@ -9,6 +10,7 @@ const TOOL_TITLES: Record<string, string> = {
   delete_memory: "删除长期记忆",
 };
 
+/** 把内部工具名转换成用户可理解的中文卡片标题。 */
 export function getToolTitle(toolName: string): string {
   return TOOL_TITLES[toolName] ?? `执行 ${toolName}`;
 }
@@ -18,6 +20,7 @@ export function presentToolInput(toolName: string, args: unknown): unknown {
   const input = args as Record<string, unknown>;
   if (toolName === "search_fatloss_knowledge") return { 问题: input.question ?? input.query ?? "减脂知识" };
   if (toolName === "update_current_profile") return { 更新字段: Object.keys(input) };
+  // 记忆证据可能含用户原话，Web 只展示操作名称，不平铺完整参数。
   if (toolName.includes("memory") || toolName.includes("remember") || toolName.includes("forget")) {
     return { 操作: getToolTitle(toolName) };
   }
@@ -29,6 +32,7 @@ export function presentToolOutput(toolName: string): { summary: string } {
 }
 
 function resultText(value: unknown): string | undefined {
+  // SDK 的错误既可能是纯字符串，也可能位于 ToolResult.content 文本块中。
   if (typeof value === "string") return value;
   if (Array.isArray(value)) {
     const text = value.flatMap((item) => {

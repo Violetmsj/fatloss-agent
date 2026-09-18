@@ -31,6 +31,7 @@ interface ActiveConversation {
   notificationListeners: Set<(notification: WebNotification) => void>;
 }
 
+/** 一次 prompt 对会话运行时的独占租约；调用方必须在 finally 中 release。 */
 export interface PromptLease {
   session: AgentSession;
   release(): void;
@@ -46,7 +47,12 @@ export interface ConversationSessionRegistryOptions {
   modelId?: string;
 }
 
+/**
+ * 管理 Web 进程中的 pi-agent 会话实例。
+ * JSONL 始终由 SessionManager 持久化；本类只缓存正在使用的运行时并负责并发与回收。
+ */
 export class ConversationSessionRegistry {
+  // active 保存已打开运行时；opening 合并同一会话同时到达的首次打开请求。
   private readonly active = new Map<string, ActiveConversation>();
   private readonly opening = new Map<string, Promise<ActiveConversation>>();
   private readonly idleTimeoutMs: number;
@@ -78,6 +84,7 @@ export class ConversationSessionRegistry {
     const id = manager.getSessionId();
     const file = manager.getSessionFile();
     if (!file) throw new Error("无法创建会话文件。");
+    // SDK 通常等首条助手消息才落盘；Web 需要空会话立即出现在侧栏，因此主动写合法会话头。
     await writeFile(file, `${JSON.stringify({
       type: "session",
       version: CURRENT_SESSION_VERSION,
@@ -94,6 +101,7 @@ export class ConversationSessionRegistry {
     if (!normalized || normalized.length > 80) throw new HttpError(400, "会话名称需为 1 到 80 个字符。", "INVALID_CONVERSATION_NAME");
     const active = this.active.get(id);
     if (active) {
+      // 活跃会话必须通过同一个 SessionManager 追加，避免另开实例并发写同一 JSONL。
       active.runtime.session.setSessionName(normalized);
       this.touch(id, active);
       return;
@@ -106,6 +114,7 @@ export class ConversationSessionRegistry {
     const active = this.active.get(id);
     if (active) {
       this.touch(id, active);
+      // getBranch 只返回当前 leaf 对应路径，不把被分叉放弃的历史混入网页。
       return active.runtime.session.sessionManager.getBranch();
     }
     const info = await this.requireInfo(id);
@@ -114,6 +123,7 @@ export class ConversationSessionRegistry {
 
   async acquirePrompt(id: string): Promise<PromptLease> {
     const entry = await this.getOrOpen(id);
+    // 同一 JSONL 同时只允许一个 prompt；不同会话拥有不同 entry，仍可并行运行。
     if (entry.running) throw new HttpError(409, "该会话正在生成回复，请等待或先停止。", "CONVERSATION_BUSY");
     entry.running = true;
     if (entry.timer) clearTimeout(entry.timer);
@@ -139,6 +149,7 @@ export class ConversationSessionRegistry {
   }
 
   async disposeAll(): Promise<void> {
+    // 先等待尚在创建中的运行时，防止它在清空 active 后才注册进来而泄漏。
     await Promise.allSettled(this.opening.values());
     this.opening.clear();
     const entries = [...this.active.values()];
@@ -155,6 +166,7 @@ export class ConversationSessionRegistry {
       this.touch(id, existing);
       return existing;
     }
+    // 两个请求同时打开冷会话时复用同一个 Promise，避免创建两套 JSONL 写入者。
     const pending = this.opening.get(id);
     if (pending) return pending;
     const opening = this.openConversation(id);
@@ -170,6 +182,7 @@ export class ConversationSessionRegistry {
     const info = await this.requireInfo(id);
     const notificationListeners = new Set<(notification: WebNotification) => void>();
     const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
+      // ModelRuntime 由整个服务共享，具体 AgentSession 仍按会话独立创建。
       const services = await createAgentSessionServices({ cwd, agentDir: this.agentDir, modelRuntime: this.options.modelRuntime });
       const model = services.modelRuntime.getModel(this.provider, this.modelId);
       const created = await createAgentSessionFromServices({
@@ -177,6 +190,7 @@ export class ConversationSessionRegistry {
         sessionManager,
         sessionStartEvent,
         model,
+        // Web Agent 只开放项目扩展注册的业务工具，不开放读写文件、执行 shell 等内置工具。
         noTools: "builtin",
       });
       return { ...created, services, diagnostics: services.diagnostics };
@@ -188,6 +202,7 @@ export class ConversationSessionRegistry {
       sessionStartEvent: { type: "session_start", reason: "resume" },
     });
     await runtime.session.bindExtensions({
+      // SDK 没有 web mode；print 是合法的无终端模式，交互能力由下面的 UI 适配器提供安全默认值。
       mode: "print",
       uiContext: createWebExtensionUI((notification) => {
         if (notificationListeners.size === 0) console.log(`[Agent ${notification.type}] ${notification.message}`);
@@ -202,6 +217,7 @@ export class ConversationSessionRegistry {
 
   private touch(id: string, entry: ActiveConversation): void {
     if (entry.timer) clearTimeout(entry.timer);
+    // 每次访问刷新空闲计时；运行中的 prompt 永不被空闲清理中途释放。
     entry.timer = setTimeout(() => {
       if (entry.running || this.active.get(id) !== entry) return;
       this.active.delete(id);
@@ -211,6 +227,7 @@ export class ConversationSessionRegistry {
   }
 
   private async requireInfo(id: string) {
+    // API 只接受服务端列表中存在的 ID，绝不把客户端输入当作文件路径打开。
     if (!/^[0-9a-f-]{20,}$/i.test(id)) throw new HttpError(404, "会话不存在。", "CONVERSATION_NOT_FOUND");
     const info = (await SessionManager.list(this.options.cwd, this.options.sessionDir)).find((session) => session.id === id);
     if (!info) throw new HttpError(404, "会话不存在。", "CONVERSATION_NOT_FOUND");

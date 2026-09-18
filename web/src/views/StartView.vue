@@ -9,11 +9,13 @@ const error = ref("");
 
 onMounted(async () => {
     try {
+        // 画像与会话互不依赖，并行读取可缩短首次进入等待时间。
         const [profile, conversations] = await Promise.all([api.getProfile(), api.listConversations()]);
         if (!profile.profile) {
             await router.replace("/onboarding");
             return;
         }
+        // 已建档时恢复最近会话；全新用户才创建第一个空白会话。
         const conversation = conversations[0] ?? await api.createConversation();
         await router.replace(`/chat/${conversation.id}`);
     } catch (cause) {

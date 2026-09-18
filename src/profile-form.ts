@@ -11,6 +11,10 @@ import {
   TRAINING_DAYS,
 } from "./profile.ts";
 
+/**
+ * 后端下发给 Web 表单的唯一选项与边界来源。
+ * 真正写库前仍会调用 validateProfile，前端不能依赖这份描述绕过服务端校验。
+ */
 export const profileFormDefinition = {
   options: {
     genders: GENDERS,

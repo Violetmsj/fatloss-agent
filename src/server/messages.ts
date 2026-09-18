@@ -16,8 +16,13 @@ function textParts(content: unknown): UIMessage["parts"] {
     : []);
 }
 
+/**
+ * 将 pi 当前分支恢复成 AI SDK UIMessage。
+ * 只保留人机文本和可关联的工具卡片，不向浏览器发送 thinking 或成功工具的原始结果。
+ */
 export function sessionEntriesToUIMessages(entries: SessionEntry[]): UIMessage[] {
   const messages: UIMessage[] = [];
+  // 工具调用和结果在 JSONL 中是不同 entry，先按 toolCallId 保存卡片引用再回填状态。
   const tools = new Map<string, DynamicToolUIPart>();
 
   for (const entry of entries) {
@@ -36,6 +41,7 @@ export function sessionEntriesToUIMessages(entries: SessionEntry[]): UIMessage[]
         if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
           parts.push({ type: "text", text: block.text });
         }
+        // 未处理 thinking block：它仍可留在本地 JSONL，但不会成为 Web 消息的一部分。
         if (block.type === "toolCall" && typeof block.id === "string" && typeof block.name === "string") {
           const part: DynamicToolUIPart = {
             type: "dynamic-tool",
@@ -68,6 +74,7 @@ export function sessionEntriesToUIMessages(entries: SessionEntry[]): UIMessage[]
 }
 
 export function getLastUserText(messages: unknown): string | null {
+  // DefaultChatTransport 会携带 UIMessage 历史；后端只把最后一条用户文本交给 session.prompt。
   if (!Array.isArray(messages)) return null;
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];

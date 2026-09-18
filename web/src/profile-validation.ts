@@ -2,6 +2,7 @@ import type { ProfileFormDefinition, ProfileInput } from "./api";
 
 export type ProfileErrors = Partial<Record<keyof ProfileInput | "form", string>>;
 
+/** 前端校验用于就地提示；约束来自后端，不能替代 PUT /api/profile 的最终校验。 */
 export function validateProfileForm(input: ProfileInput, definition: ProfileFormDefinition): ProfileErrors {
     const errors: ProfileErrors = {};
     const numberFields: Array<[keyof ProfileInput, string]> = [
@@ -37,4 +38,3 @@ export function validateProfileForm(input: ProfileInput, definition: ProfileForm
     if (input.trainingDays.length < days.minimum || input.trainingDays.length > days.maximum) errors.trainingDays = `每周训练日请选择 ${days.minimum} 到 ${days.maximum} 天`;
     return errors;
 }
-

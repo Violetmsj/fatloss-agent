@@ -14,7 +14,9 @@ export interface AgentStreamOptions {
   hardTimeoutMs?: number;
 }
 
+/** 把一个 pi-agent prompt 包装成浏览器可消费的 AI SDK UI Message Stream。 */
 export function createAgentMessageStream(options: AgentStreamOptions) {
+  // 空闲超时防止 provider 无事件卡死；硬超时限制整次生成的最长生命周期。
   const idleTimeoutMs = options.idleTimeoutMs ?? Number(process.env.CHAT_IDLE_TIMEOUT_MS ?? 60_000);
   const hardTimeoutMs = options.hardTimeoutMs ?? Number(process.env.CHAT_HARD_TIMEOUT_MS ?? 5 * 60_000);
 
@@ -29,6 +31,7 @@ export function createAgentMessageStream(options: AgentStreamOptions) {
       let idleTimer: NodeJS.Timeout | undefined;
       let hardTimer: NodeJS.Timeout | undefined;
 
+      // AI SDK 要求每段文本显式 start/end；工具调用前也要先结束正在输出的文本段。
       const closeText = () => {
         if (!activeTextId) return;
         writer.write({ type: "text-end", id: activeTextId });
@@ -42,6 +45,7 @@ export function createAgentMessageStream(options: AgentStreamOptions) {
         return activeTextId;
       };
       const complete = (error?: unknown) => {
+        // prompt.finally 和 agent_settled 都可能尝试结束流，这里统一去重。
         if (finished) return;
         finished = true;
         closeText();
@@ -74,6 +78,7 @@ export function createAgentMessageStream(options: AgentStreamOptions) {
 
       const onAbort = () => abort("用户已停止生成。");
       options.signal.addEventListener("abort", onAbort, { once: true });
+      // 扩展 notify 不写入聊天历史，只作为本次响应的临时 data 事件发送。
       const offNotification = options.lease.onNotification((notification) => {
         writer.write({
           type: "data-notification",
@@ -81,6 +86,7 @@ export function createAgentMessageStream(options: AgentStreamOptions) {
           transient: true,
         } as UIMessageChunk);
       });
+      // subscribe 是同步回调且 SDK 不替监听器捕获异常，因此必须在回调内部兜底。
       const unsubscribe = options.lease.session.subscribe((event) => {
         try {
           refreshIdle();
@@ -102,6 +108,7 @@ export function createAgentMessageStream(options: AgentStreamOptions) {
       } catch (error) {
         complete(abortReason ? undefined : new Error("Agent 回复失败，请检查模型配置或稍后重试。", { cause: error }));
       } finally {
+        // 无论成功、错误或中断都释放计时器、订阅和会话互斥锁。
         if (idleTimer) clearTimeout(idleTimer);
         if (hardTimer) clearTimeout(hardTimer);
         options.signal.removeEventListener("abort", onAbort);
@@ -119,6 +126,7 @@ interface TranslationState {
   complete(error?: unknown): void;
 }
 
+/** 仅映射网页需要的文本、工具和完成事件；thinking 事件会自然被忽略。 */
 function translateAgentEvent(
   event: AgentSessionEvent,
   writer: UIMessageStreamWriter,
@@ -133,6 +141,7 @@ function translateAgentEvent(
   }
 
   if (event.type === "tool_execution_start") {
+    // toolCallId 是开始与结果之间的稳定关联键，前端据此更新同一张工具卡片。
     state.closeText();
     writer.write({
       type: "tool-input-available",
@@ -148,6 +157,7 @@ function translateAgentEvent(
   if (event.type === "tool_execution_end") {
     if (event.isError) {
       const errorText = presentToolError(event.toolName, event.result);
+      // 网页得到可展示原因，终端同时保留工具名和调用 ID 便于追查原始会话。
       console.error(`[Agent 工具失败] ${event.toolName} (${event.toolCallId})：${errorText}`);
       writer.write({
         type: "tool-output-error",

@@ -33,6 +33,8 @@ const emptyProfile = (): ProfileInput => ({
     focusArea: "全身",
     trainingDays: [],
 });
+
+// Vue reactive 对象不能直接 structuredClone；显式复制三个数组也避免修改父组件传入值。
 function copyProfile(profile: ProfileInput): ProfileInput {
     return {
         ...profile,
@@ -53,6 +55,7 @@ function toggle(field: "favoriteExercises" | "equipment" | "trainingDays", value
     const index = selected.indexOf(value);
     if (index >= 0) selected.splice(index, 1);
     else selected.push(value);
+    // “不使用器械”与具体器械互斥，在点击时立即修正，服务端保存前仍会再次校验。
     if (field === "equipment" && props.definition.constraints.equipment.exclusive) {
         const exclusive = props.definition.constraints.equipment.exclusive;
         if (value === exclusive && selected.includes(value)) form.equipment = [exclusive];
@@ -69,6 +72,7 @@ async function submitPreview(): Promise<void> {
     }
     loading.value = true;
     try {
+        // preview 只做后端校验和估算，不会写入 SQLite。
         preview.value = await api.previewProfile(copyProfile(form));
     } catch (error) {
         serverError.value = error instanceof ApiError ? error.message : "预览失败，请稍后重试。";
@@ -81,6 +85,7 @@ async function confirmSave(): Promise<void> {
     loading.value = true;
     serverError.value = "";
     try {
+        // 用户在弹窗确认后才真正覆盖画像；后端会重复同一套业务校验。
         const result = await api.saveProfile(copyProfile(form));
         preview.value = null;
         emit("saved", result.profile);

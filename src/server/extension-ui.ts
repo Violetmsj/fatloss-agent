@@ -5,6 +5,10 @@ export interface WebNotification {
   type: "info" | "warning" | "error";
 }
 
+/**
+ * 为以 print mode 运行的扩展提供无终端 UI。
+ * notify 会转发给 Web 流；需要用户交互的方法返回取消/空值，避免误触发 TUI 问卷。
+ */
 export function createWebExtensionUI(onNotify: (notification: WebNotification) => void): ExtensionUIContext {
   const ui = {
     select: async () => undefined,

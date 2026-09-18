@@ -1,3 +1,4 @@
+/** 可安全映射为公开 HTTP 状态和业务错误码的预期异常。 */
 export class HttpError extends Error {
   constructor(
     readonly status: number,

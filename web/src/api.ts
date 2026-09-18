@@ -111,6 +111,7 @@ export class ApiError extends Error {
     }
 }
 
+/** 统一处理 JSON 请求、业务错误结构和 204 空响应，页面只关心成功数据或 ApiError。 */
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, {
         ...init,
@@ -124,6 +125,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     return response.json() as Promise<T>;
 }
 
+// 页面使用的普通 REST 接口；聊天流由 @ai-sdk/vue 的 DefaultChatTransport 单独管理。
 export const api = {
     getProfile: () => request<ProfileResponse>("/api/profile"),
     previewProfile: (profile: ProfileInput) => request<ProfilePreview>("/api/profile/preview", { method: "POST", body: JSON.stringify(profile) }),
@@ -133,4 +135,3 @@ export const api = {
     renameConversation: (id: string, name: string) => request<void>(`/api/conversations/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) }),
     getMessages: async (id: string) => (await request<{ messages: UIMessage[] }>(`/api/conversations/${encodeURIComponent(id)}/messages`)).messages,
 };
-
