@@ -15,7 +15,7 @@
 
 ```bash
 # 兜底前必做：先确认 skill 真的无答案
-grep -rn "<关键字>" ~/.claude/skills/pi-agent/references/
+grep -rn "<关键字>" .workbuddy/skills/dg-piagent/references/
 ```
 
 ---
@@ -85,17 +85,12 @@ grep -rln "<主题>" node_modules/@earendil-works/pi-coding-agent/docs/
 
 ## 包未安装时的降级
 
-如果项目根 `node_modules/@earendil-works/` 不存在：
-
-1. 提示用户 `npm install @earendil-works/pi-coding-agent@0.83.0`
-2. 或退到 GitHub 远程：`github.com/earendil-works/pi` 的 `packages/{coding-agent,agent,ai}/src/`（注意版本可能与项目实际不一致）
+如果项目根 `node_modules/@earendil-works/` 不存在，只能退到 GitHub 远程：
+`github.com/earendil-works/pi` 的 `packages/{coding-agent,agent,ai}/src/`（注意版本可能与项目实际不一致）。
 
 ---
 
 ## 回流提示（解决后）
 
-兜底解决完问题后，**主动**向用户提议：
-
-> 「这条信息来自 node_modules 源码，看起来任何用 pi-agent 的项目都可能遇到——值得补进 skill 吗？」
-
-由用户决定。若确认补，遵循 [skill-maintenance.md](skill-maintenance.md) 的 6 条原则就近沉淀。
+兜底解决完问题后，向用户说明结论来自源码、并给出具体文件路径。
+若该问题属于反复会遇到的通用知识点，可提议补进本技能的 `references/`，由用户决定。

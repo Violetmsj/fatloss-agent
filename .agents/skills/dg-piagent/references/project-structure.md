@@ -1,9 +1,9 @@
-# 在 Codex 中开发的 pi-agent 项目结构建议 — 关键模式与详解
+# 在 WorkBuddy 中开发的 pi-agent 项目结构建议 — 关键模式与详解
 
-本文档是 [SKILL.md](SKILL.md) 中"项目结构建议"的深入展开。
+本文档是 [SKILL.md](../SKILL.md) 中"项目结构建议"的深入展开。
 按需阅读，遇到具体问题时参考。
 
-> 本文中的 `.pi/` 是**目标 pi-agent 应用**的运行时资源目录；代码开发、搜索、编辑和测试由 Codex 执行。本 Skill 自身应安装在 `.agents/skills/dg-piagent/`，不要复制到目标应用的 `.pi/skills/`，除非该应用也需要把同一份内容提供给其自身的 pi-agent 运行时。
+> 本文中的 `.pi/` 是**目标 pi-agent 应用**的运行时资源目录；代码开发、搜索、编辑和测试由 WorkBuddy 执行。本 Skill 自身应安装在 `.workbuddy/skills/dg-piagent/`，不要复制到目标应用的 `.pi/skills/`，除非该应用也需要把同一份内容提供给其自身的 pi-agent 运行时。
 
 ---
 

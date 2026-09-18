@@ -299,7 +299,7 @@ type PackageSource = string | {
 2. **「这个扩展我装在 `npm:untrusted-xxx` 里，是不是自动隔离？」** ❌ pi 对所有 source 一视同仁，**都装进同一个 node_modules / git 目录，都以主进程权限跑**。要隔离必须**整个 pi 进程进容器**，或装个"工具路由扩展"代理该扩展的工具
 3. **「Gondolin 装了 = 所有工具都被隔离」** ❌ 仅内置工具（`read`/`write`/`edit`/`bash`/`grep`/`find`/`ls`）和 `!` 命令被路由。其他扩展注册的工具**仍在宿主**（见 containerization.md）
 4. **「project trust 阻止了恶意代码执行」** ❌ trust 只是"加载前确认"。一旦信任加载，扩展/skills 想干什么就干什么
-5. **「`pi -e npm:xxx` 试运行所以安全」** ❌ `-e` 只是不写 settings.json，**仍然下载安装、仍然执行**。证据：[I02 CHANGELOG v2.68 P0 #1](../../CHANGELOG.md)、`resource-loader.ts` 把 `-e` 的路径标记为 `temporary: true`，但 `temporary` scope 仍然走完整安装链路
+5. **「`pi -e npm:xxx` 试运行所以安全」** ❌ `-e` 只是不写 settings.json，**仍然下载安装、仍然执行**。证据：I02 CHANGELOG v2.68 P0 #1、`resource-loader.ts` 把 `-e` 的路径标记为 `temporary: true`，但 `temporary` scope 仍然走完整安装链路
 6. **「OpenShell 一定比 Docker 安全」** ⚠️ 不绝对。OpenShell 远端 gateway 不 bind-mount 宿主（更隔离），但近端 gateway 仍可能让本地文件暴露——看 gateway 配置
 7. **「`examples/extensions/sandbox/` 扩展覆盖所有工具」** ❌ 只覆盖 `bash` 工具和 `user_bash` 事件。`read`/`write`/`edit`/`grep`/`find`/`ls` 不受其沙箱约束（那是 Gondolin 的覆盖范围）。源码 `examples/extensions/sandbox/index.ts` 只 override `bash` 工具的 `execute`
 8. **「`pi list --details` 能看源码」** ❌ 该命令不存在。`pi list` usage 是 `pi list [--approve|--no-approve]`，无 `--details` flag、无 source 参数。审查源码要**直接看磁盘路径**（见上文「怎么审查第三方扩展」）

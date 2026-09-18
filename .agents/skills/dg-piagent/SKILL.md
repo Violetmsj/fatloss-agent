@@ -1,56 +1,35 @@
 ---
 name: dg-piagent
 description: |
-  在 Codex 中开发 pi-agent / @earendil-works/pi-coding-agent SDK 应用时使用：创建 agent、自定义工具、
-  编写扩展、修改系统提示词、管理会话、配置模型、处理认证、加载 skills/prompts/context files、
-  实现完全控制模式、或任何需要调用 pi-agent SDK API 的任务时使用。
-  也用于企业内网接口接入评估：用户给出企业/内网 LLM 接口文档或地址，问「能不能接」「怎么配」时，
-  按接口核对清单给出接入建议 + models.json 配置初稿。
-  触发关键词：createAgentSession、AgentSession、pi.on、session.subscribe、extensionFactories、
-  ModelRegistry、defineTool、pi-coding-agent、pi-ai、@earendil-works、SSE 流式集成、
-  企业接口文档、内网模型接入、OpenAI 兼容判断、接口接入评估。
+  pi-agent SDK（@earendil-works/pi-coding-agent / @earendil-works/pi-ai）的离线文档检索器。
+  当用户问 pi-agent 的 API 怎么调、某类型有哪些字段/方法、某个事件何时触发、扩展如何拦截工具调用、
+  session 如何持久化、compaction / provider / 工具白名单等机制如何工作时，先在本技能的 references/
+  里定位（scenarios 按意图查、sdk_doc 按 API 查），再回 node_modules 源码核实后再作答。
+  触发关键词：createAgentSession、AgentSession、session.subscribe、session.prompt、pi.on、defineTool、
+  ExtensionAPI、DefaultResourceLoader、SessionManager、SettingsManager、ModelRegistry、ModelRuntime、
+  pi-coding-agent、pi-ai、@earendil-works、事件类型、工具白名单、compaction、SSE 流式、多 Agent。
+  只做「查文档 + 核实」，不主动引导安装、升级、脚手架搭建或打包发布 pi-agent 应用。
 ---
 
-# 在 Codex 中开发 pi-agent SDK 应用
+# pi-agent SDK 文档检索
 
-## 宿主与目标运行时
+## 干什么 / 不干什么
 
-本 Skill 的**开发宿主是 Codex**。先遵循项目的 `AGENTS.md`，再使用 Codex 的原生读文件、搜索、编辑、终端和测试能力完成代码修改与验证；不要要求用户切换到 pi CLI/TUI 来执行日常开发。
+**干**: 回答 pi-agent SDK 的 API 与机制问题。检索顺序固定为「意图总表 → SDK API 索引 → node_modules 源码兜底」，
+查到就引文件、给结论；查不到就明说查不到，不凭空推断。
 
-`@earendil-works/pi-coding-agent`、`createAgentSession`、`pi.on`、`.pi/` 和 `pi install` 仍是**被开发应用的 SDK/运行时接口**，不可替换成 Codex API 或 `.agents/` 路径：
+**不干**: 不引导 `npm install`、版本升级评估、项目脚手架、`.pi/` 目录规划、打包发布。
+用户明确问这些时才处理，且要说明这不是本技能的主场。
 
-- 本 Skill 自身位于 Codex 的 `.agents/skills/dg-piagent/`，由 Codex 发现和加载。
-- 目标 pi-agent 应用的 `.pi/` 目录仍承载其 system prompt、扩展、skills、prompts 与 settings；仅在实现、调试或打包这个目标运行时时修改它。
-- 只有用户明确要求 pi CLI 的安装、打包、发布或交互式运行验证时，才通过 Codex 终端执行 `pi ...` 命令；其余开发、检索、编辑和测试均在 Codex 中完成。
+## 版本漂移提醒 ⚠️
 
-下文的 pi 名称均指目标 SDK/运行时，而非本 Skill 的宿主环境。
+`references/` 下的文档对齐到 **pi-coding-agent v0.83.0**，本仓库实装 **0.85.1**。
 
-> ⚠️ **版本基线**: 本 skill 的 API 描述已对齐到 **pi-coding-agent v0.83.0**。
->
-> **遇 pi-ai import 失败时**，先查 `node_modules/@earendil-works/pi-ai/dist/compat.d.ts` 的 `export *` 列表，确认符号归属哪个入口。
+- 文档与源码冲突时，**以 `node_modules/@earendil-works/**/dist/**/*.d.ts` 为准**，并顺手指出文档过期点。
+- 涉及 0.83 → 0.85 之间可能变动的 API，优先走源码兜底协议的第 3 层。
+- 遇 `pi-ai` import 失败，先查 `node_modules/@earendil-works/pi-ai/dist/compat.d.ts` 的 `export *` 列表，确认符号归属哪个入口。
 
-## 版本协议 ⭐
-
-本 skill 核对到顶部基线版本（当前 **v0.83.0**）。涉及安装/升级 pi-agent 时遵循三步：
-
-1. **默认对齐**：引导安装一律用基线版本 `npm install @earendil-works/pi-coding-agent@0.83.0`，**不装 `latest`**——skill 的 API 描述精确核对到基线版本，装 latest 会立即漂移。场景文档里的安装命令同样以基线版本为准。
-
-2. **升级前评估**：当任务涉及安装/升级（或用户问版本）时，先跑 `npm view @earendil-works/pi-coding-agent version` 拿 latest 与基线对比。若不同，联网查该版本 CHANGELOG/release notes，从 SDK 二次开发角度评估（新功能 / 破坏性变更），给用户简短建议，由用户决定是否升级。日常开发（项目已装好）不触发。
-
-3. **升级即更新 skill**：若用户同意升到 X.Y.Z，安装后按 [skill-maintenance.md](references/skill-maintenance.md) 流程，对照新版 `dist/**/*.d.ts` + CHANGELOG 审查 skill 差异，产出更新清单，报用户确认后再改，并同步更新顶部基线版本号。
-
-**变更查阅渠道**（第 2/3 步执行依据）：
-
-| 渠道 | 路径/命令 | 适用阶段 |
-|------|----------|---------|
-| ① node_modules CHANGELOG | `<proj>/node_modules/@earendil-works/pi-coding-agent/CHANGELOG.md`（标准 Keep-a-Changelog，按 `## [版本号]` 分节，含 Breaking Changes）| **升级后**（第3步）|
-| ② GitHub | `github.com/earendil-works/pi` 的 `packages/coding-agent/CHANGELOG.md` 或 Releases | **升级前**（第2步，需联网）|
-
-> 时序关键：升级前 node_modules 仍是旧版，**渠道①看不到新版内容**，第 2 步必须用②（GitHub）。
-
-## Overview
-
-pi-agent 是基于**事件驱动**的 Agent 开发框架(`@earendil-works/pi-coding-agent`)。核心心智模型:
+## 核心心智模型（帮助定位文档）
 
 ```
 createAgentSession()  ← 组装入口(Provider + 工具 + 资源)
@@ -66,76 +45,24 @@ createAgentSession()  ← 组装入口(Provider + 工具 + 资源)
                context / tool_call / tool_result / before_agent_start / input / model_select
 ```
 
-**关键区分(最大集成坑)**: 有 **6 个扩展独有事件**——`context` / `tool_call` / `tool_result` / `before_agent_start` / `input` / `model_select`。
-在 server 层用 `session.subscribe` 监听这 6 个会**静默失败**(handler 被调用但 type 分支永不命中,无报错)。
-**对策**: 需要抓这 6 个事件的逻辑(日志/trace/拦截/**抓这 6 个事件的数据落库**)必须写成扩展走 `pi.on`。⚠️ 但注意——**pi.on handler 被派发方 `await`，落库这类慢 I/O 必须 fire-and-forget**（推队列后台写），否则阻塞 agent loop。若只需存 `message_*`/`turn_*`/`tool_execution_*` 等 subscribe 收得到的事件，**落库优先走 `session.subscribe`**（不 await listener，可直接 await 写库，零阻塞）。详见 [04-events.md 关键细节](references/sdk_doc/04-events.md#关键细节)。
-详见 [Common Mistakes](#common-mistakes) 与 [sdk_doc/04-events.md](references/sdk_doc/04-events.md)。
+**最大集成坑**: `context` / `tool_call` / `tool_result` / `before_agent_start` / `input` / `model_select` 这 6 个是**扩展独有事件**，
+用 `session.subscribe` 监听会**静默失败**（handler 被调用但 type 分支永不命中，无报错），必须写成扩展走 `pi.on`。
+详见 [04-events.md](references/sdk_doc/04-events.md)。
 
-> ⭐ **v0.83.0 推荐**：需要"agent 真正结束"信号时，订阅 **`agent_settled`** 替代 `agent_end`——前者保证所有 retry/compaction/queue 处理完才触发，每 prompt 一次，两层都派发。详见 [sdk_doc/04 坑 1](references/sdk_doc/04-events.md#坑-1不要把-agent_end-当成流程结束的唯一信号)。
-
----
-
-## When to Use
-
-**该用本 skill**:
-- 基于 pi-agent SDK 做 Agent 二次开发(Web 服务、CLI、定制化应用)
-- 调用 `createAgentSession` / `AgentSession` / `defineTool` / `pi.on` 等 API
+> 需要"agent 真正结束"信号时订阅 **`agent_settled`** 而非 `agent_end`——前者保证所有 retry/compaction/queue 处理完才触发，
+> 每 prompt 一次，两层都派发。详见 [04-events.md 坑 1](references/sdk_doc/04-events.md#坑-1不要把-agent_end-当成流程结束的唯一信号)。
 
 ---
 
-## 快速开始
+## 检索第一步：意图总表
 
-```bash
-# 在 Codex 终端中为目标项目安装 SDK 依赖
-npm install @earendil-works/pi-coding-agent@0.83.0
-```
-
-最简示例:
-
-```ts
-import { createAgentSession } from "@earendil-works/pi-coding-agent";
-
-const { session } = await createAgentSession();
-
-session.subscribe((event) => {
-  if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-    process.stdout.write(event.assistantMessageEvent.delta);
-  }
-});
-
-try {
-  await session.prompt("What files are in the current directory?");
-} finally {
-  session.dispose();
-}
-```
-
-> 完整场景: [scenarios/A01-minimal-startup.md](references/scenarios/A01-minimal-startup.md)
-
----
-
-## ⭐ 二开起步检查清单
-
-不管做什么 Agent，先过这几项（默认值都是 pi 编码助手的产品烙印）：
-
-**必改三项**
-- **系统提示词** → 默认硬编码 pi 人设（不覆盖会自称 "expert coding assistant operating inside pi"），必须覆盖 → [A03](references/scenarios/A03-system-prompt.md)
-- **可用工具** → 默认 `read/bash/edit/write` 编码四件套；垂直 Agent 要换业务工具，`bash` 在多用户场景是安全口子 → [A04](references/scenarios/A04-tool-whitelist.md)
-- **会话存储** → 默认落盘 `~/.pi/agent/sessions/`（CLI 单用户设计）；Web 多用户必须 `SessionManager.inMemory()` + 自己落库 → [F01](references/scenarios/F01-session-persistence.md)
-
-**易踩坑**：`createAgentSession` 传了 `resourceLoader` 就不自动 `reload`——用扩展（尤其扩展注册 provider）时必须自己 `await loader.reload()`，否则扩展 factory 不执行、provider 选不到 → [A06](references/scenarios/A06-load-extensions.md)
-
----
-
-## 意图总表
-
-按「我要做什么」找文件。场景编号保留在文件名,向后兼容。
+按「我要知道什么」找文件。场景编号保留在文件名，向后兼容。
 
 ### 1. 启动与组装
 
-| 我想... | 详见 |
+| 我想知道... | 详见 |
 |--------|------|
-| 最简跑起来 | [A01](references/scenarios/A01-minimal-startup.md) |
+| 最简跑起来的写法 | [A01](references/scenarios/A01-minimal-startup.md) |
 | 选模型 / 推理深度 | [A02](references/scenarios/A02-model-selection.md) |
 | 改系统提示词 / 人设 | [A03](references/scenarios/A03-system-prompt.md) |
 | 指定 cwd | [A05](references/scenarios/A05-custom-cwd.md) |
@@ -144,7 +71,7 @@ try {
 
 ### 2. 工具系统
 
-| 我想... | 详见 |
+| 我想知道... | 详见 |
 |--------|------|
 | 写自定义工具(查 DB/调 API) | [D01](references/scenarios/D01-custom-tool.md) |
 | 工具白名单(禁用部分工具) | [A04](references/scenarios/A04-tool-whitelist.md) |
@@ -155,7 +82,7 @@ try {
 
 ### 3. 扩展与事件 ⭐(最常用)
 
-| 我想... | 详见 |
+| 我想知道... | 详见 |
 |--------|------|
 | 写一个完整的扩展 | [E02](references/scenarios/E02-extension-basics.md) |
 | 拦截 / 修改工具调用 | [E01](references/scenarios/E01-tool-intercept.md) |
@@ -167,7 +94,7 @@ try {
 
 ### 4. 持久化与会话
 
-| 我想... | 详见 |
+| 我想知道... | 详见 |
 |--------|------|
 | 持久化会话 / 断点续聊 | [F01](references/scenarios/F01-session-persistence.md) |
 | 运行时切换 / 恢复 / 分叉 | [F02](references/scenarios/F02-session-runtime.md) |
@@ -180,7 +107,7 @@ try {
 
 ### 5. 上下文与记忆
 
-| 我想... | 详见 |
+| 我想知道... | 详见 |
 |--------|------|
 | 加载/过滤/创建自定义 Skill | [C01](references/scenarios/C01-custom-skill.md) |
 | 定义 Prompt 模板(`/command`) | [C02](references/scenarios/C02-prompt-templates.md) |
@@ -190,7 +117,7 @@ try {
 
 ### 6. Provider 与认证
 
-| 我想... | 详见 |
+| 我想知道... | 详见 |
 |--------|------|
 | 配置 API Key / OAuth | [B01](references/scenarios/B01-auth-config.md) |
 | 管理 settings 配置项 | [B02](references/scenarios/B02-settings.md) |
@@ -198,33 +125,30 @@ try {
 | 自定义 Provider(智谱等) | [H02](references/scenarios/H02-custom-provider.md) |
 | 企业接口能否接入 + 出 models.json 初稿 | [H07](references/scenarios/H07-enterprise-interface.md) |
 | 用 Faux Provider 做测试 | [H03](references/scenarios/H03-faux-provider.md) |
+| 项目信任(project_trust 何时触发) | [B04](references/scenarios/B04-project-trust.md) |
 
-### 7. 多 Agent 与打包发布
+### 7. 多 Agent 与运行时环境
 
-| 我想... | 详见 |
+| 我想知道... | 详见 |
 |--------|------|
 | 多 Agent 协作 | [H06](references/scenarios/H06-multi-agent.md) |
 | 打包发布 Pi Package | [I01](references/scenarios/I01-pi-package.md) |
 | 分发扩展(`.piplugin`) | [I02](references/scenarios/I02-distribute-extension.md) |
 | 扩展引用第三方依赖 | [I03](references/scenarios/I03-extension-deps.md) |
+| Sandbox 沙箱隔离 | [I04](references/scenarios/I04-sandbox.md) |
 | 子 Agent 调度 | [I05](references/scenarios/I05-subagent.md) |
 
-> **未列出的场景**(终端 UI / 自定义命令 / RPC / Sandbox 等低频或 CLI 专属)直接翻 `references/scenarios/` 目录。
+### 8. 项目结构
+
+| 我想知道... | 详见 |
+|--------|------|
+| 目录建议 / 规模演进 / 常见错误 | [project-structure.md](references/project-structure.md) |
+
+> `references/scenarios/` 共 42 篇，上表已全部索引。若目录里出现上表未收录的新文件，直接翻该文件即可。
 
 ---
 
-## 项目结构
-
-**目标应用约定**: `.pi/` 放 pi-agent 运行时资源(人可编辑),`src/` 放逻辑(开发者维护)。本 Codex Skill 位于 `.agents/skills/dg-piagent/`，不应放入目标应用的 `.pi/skills/`。
-**核心**: `main.ts` 只做组装(Provider → 工具 → createAgentSession)。
-
-完整目录建议、规模演进、常见错误 → [project-structure.md](references/project-structure.md)
-
-注意：项目结构仅是对新项目的建议，并不是必须选择，请按照实际情况（尤其是旧项目）调整项目结构。
-
----
-
-## SDK API 索引
+## 检索第二步：SDK API 索引
 
 按包/模块查 API。每个条目指向 `references/sdk_doc/` 下的详细文档。
 
@@ -256,17 +180,16 @@ try {
 | 多 Agent 架构 | 多 Agent 协作模式 | [21](references/sdk_doc/21-multi-agent.md) |
 | 扩展推荐 SOP | 按用户需求实时查 npm + 给出推荐清单（用户主动询问时触发） | [22](references/sdk_doc/22-extension-recommender.md) |
 
-> 完整 sdk_doc 索引直接翻 `references/sdk_doc/` 目录（TUI/UI API/Faux Provider/RPC 模式等 CLI 专属低频项已从本 skill 剔除，需要时查 SDK 源码）。
-
-
+> 完整 sdk_doc 索引直接翻 `references/sdk_doc/` 目录（TUI/UI API/RPC 模式等 CLI 专属低频项已从本 skill 剔除，需要时查 SDK 源码）。
 
 ---
 
-## 源码兜底协议 ⭐(本 skill 不够用时)
+## 检索第三步：源码兜底协议 ⭐
 
-当 `scenarios/` 和 `sdk_doc/` 都无法回答你的问题时,**不要凭空推断**——使用 Codex 的搜索与读取能力直接查 `node_modules` 内的包内容。pi-agent 的 npm 包**自带文档、示例和类型**,任何装了 SDK 的项目都自动拥有。
+当 `scenarios/` 和 `sdk_doc/` 都回答不了时，**不要凭空推断**——直接查 `node_modules` 内的包内容。
+pi-agent 的 npm 包**自带文档、示例和类型**，装了 SDK 的项目都自动拥有。
 
-**触发信号**:类型/字段/方法名在 skill 内 grep 不到、签名未列出、实际行为与描述冲突、集成场景超出已覆盖模式。
+**触发信号**: 类型/字段/方法名在 skill 内 grep 不到、签名未列出、实际行为与描述冲突、集成场景超出已覆盖模式。
 
 **4 层优先级**(信息密度从高到低,先用上层):
 
@@ -277,14 +200,12 @@ try {
 | 3 | `*/dist/**/*.d.ts` | 「X 有哪些字段/方法」 |
 | 4 | `*/dist/**/*.js` | 「X 为什么这样行为」 |
 
-> 完整路径导航表(三个包自带内容不对称)、检索配方、降级策略、回流提示 → [source-fallback.md](references/source-fallback.md)
+> 完整路径导航表(三个包自带内容不对称)、检索配方、降级策略 → [source-fallback.md](references/source-fallback.md)
 
-**兜底解决后**:若该问题任何用 pi-agent 的项目都可能遇到,主动建议用户「值得补进 skill 吗」,由用户决定(遵循 [skill-maintenance.md](references/skill-maintenance.md) 沉淀)。
+**作答要求**: 走源码兜底得到的结论，回答时标明结论来自源码而非 skill 文档，并给出具体文件路径。
 
 ---
 
-## 资源 & 维护
+## 资源
 
 **官方源码参考**: `packages/coding-agent/src/`(SDK)、`packages/agent/src/`(Agent 核心)、`packages/ai/src/`(AI 抽象)
-
-**Skill 维护**: 发现信息缺失/错误导致走弯路时,按 [skill-maintenance.md](references/skill-maintenance.md) 6 条原则完善本 skill,并同步更新 [CHANGELOG.md](CHANGELOG.md)（历史沿革，永久保留）。
