@@ -13,6 +13,17 @@ interface MemoryRow {
     expires_at: string | null; version: number;
 }
 
+function parseExpiry(value: string, sourceTime: number): number {
+    const match = value.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d{1,3})?(Z|([+-])(\d{2}):(\d{2}))$/);
+    if (!match) throw new Error("记忆有效期必须是包含时区的 ISO 日期时间。");
+    const expiry = Date.parse(value);
+    if (!Number.isFinite(expiry) || expiry <= sourceTime) throw new Error("记忆有效期必须晚于用户陈述时间。");
+    // Date.parse 可能把 2 月 30 日折算到 3 月；按原时区还原后再核对日历字段。
+    const offset = match[2] === "Z" ? 0 : (Number(match[4]) * 60 + Number(match[5])) * (match[3] === "+" ? 1 : -1);
+    if (new Date(expiry + offset * 60000).toISOString().slice(0, 19) !== match[1]) throw new Error("记忆有效期不是有效日历日期。");
+    return expiry;
+}
+
 export interface MemoryFilter {
     id?: string;
     category?: MemoryCategory;
@@ -168,17 +179,18 @@ export class MemoryStore {
                 }
                 const content = normalizeMemoryContent(candidate.content);
                 if (!content) throw new Error("记忆内容不能为空。");
+                const defaultStageExpiry = sourceTime + 7 * 24 * 60 * 60 * 1000;
                 let expiry: number | null = null;
                 if (candidate.expiresAt != null) {
-                    const match = candidate.expiresAt.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d{1,3})?(Z|([+-])(\d{2}):(\d{2}))$/);
-                    if (!match) throw new Error("记忆有效期必须是包含时区的 ISO 日期时间。");
-                    expiry = Date.parse(candidate.expiresAt);
-                    if (!Number.isFinite(expiry) || expiry <= sourceTime) throw new Error("记忆有效期必须晚于用户陈述时间。");
-                    // Date.parse 可能把 2 月 30 日折算到 3 月；按原时区还原后再核对日历字段。
-                    const offset = match[2] === "Z" ? 0 : (Number(match[4]) * 60 + Number(match[5])) * (match[3] === "+" ? 1 : -1);
-                    if (new Date(expiry + offset * 60000).toISOString().slice(0, 19) !== match[1]) throw new Error("记忆有效期不是有效日历日期。");
+                    try {
+                        expiry = parseExpiry(candidate.expiresAt, sourceTime);
+                    } catch (error) {
+                        // 即时 Agent 可能不知道当前日期而猜出过期时间；阶段状态仍按确定规则从原话起保存七天。
+                        if (candidate.category !== "阶段状态") throw error;
+                        expiry = defaultStageExpiry;
+                    }
                 } else if (candidate.category === "阶段状态") {
-                    expiry = sourceTime + 7 * 24 * 60 * 60 * 1000;
+                    expiry = defaultStageExpiry;
                 }
                 const expiresAt = expiry === null ? null : new Date(expiry).toISOString();
                 const status = expiry !== null && expiry <= this.now() ? "inactive" : "active";

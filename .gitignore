@@ -5,3 +5,4 @@ data/*.sqlite-*
 data/chroma/
 .env
 dist/
+web/dist/

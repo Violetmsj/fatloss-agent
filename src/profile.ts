@@ -97,6 +97,7 @@ export function validateProfile(input: ProfileInput): void {
   validateDistinct("运动方式", input.favoriteExercises, 2, 0);
   if (!input.equipment.every((item) => isOneOf(item, EQUIPMENT))) throw new Error("运动器械无效");
   validateDistinct("运动器械", input.equipment, EQUIPMENT.length, 1);
+  if (input.equipment.includes("不使用器械") && input.equipment.length > 1) throw new Error("不使用器械不能与其他器械同时选择");
   if (!isOneOf(input.stairResponse, STAIR_RESPONSES)) throw new Error("爬楼反应无效");
   if (!isOneOf(input.focusArea, FOCUS_AREAS)) throw new Error("重点改善部位无效");
   if (!input.trainingDays.every((item) => isOneOf(item, TRAINING_DAYS))) throw new Error("训练日无效");

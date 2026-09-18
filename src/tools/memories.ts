@@ -38,7 +38,7 @@ export function createMemoryTools(store: MemoryStore) {
         }),
         defineTool({
             name: "create_memory", label: "记住用户信息",
-            description: "仅在用户明确要求记住时立即保存一条明确事实。必须引用当前用户消息 ID 和逐字原话，不推断、不把助手建议当偏好，不写 profile 已建模字段；一般陈述由后台提取。不需要重复确认。",
+            description: "仅在用户明确要求记住时立即保存一条明确事实。必须引用当前用户消息 ID 和逐字原话，不推断、不把助手建议当偏好，不写 profile 已建模字段；一般陈述由后台提取。阶段状态没有明确期限时将 expiresAt 设为 null，由程序按原话时间保存七天，禁止猜测当前日期。不需要重复确认。",
             parameters: Type.Object(memoryFields, { additionalProperties: false }),
             async execute(_id, fields, _signal, _update, ctx) { return write({ action: "create", ...fields }, ctx); },
         }),

@@ -108,6 +108,17 @@ test("无期限阶段状态从原话起七天失效，偏好不自动过期", (t
     assert.ok(!store.context().includes("最近加班"));
 });
 
+test("阶段状态的无效模型期限回退为原话起七天", (t) => {
+    const { store } = setup(t);
+    const source = message("u1", "最近在出差");
+    store.apply([{
+        ...create(source, source.text),
+        category: "阶段状态",
+        expiresAt: "2026-02-05T23:59:59+08:00",
+    }], [source], store.revision);
+    assert.equal(store.list().items[0].expiresAt, new Date(START + 1000 + 7 * 86400000).toISOString());
+});
+
 test("明确期限按时区保存，非法或早于原话的期限拒绝入库", (t) => {
     const { store } = setup(t);
     store.apply([{ ...create(), expiresAt: "2026-09-20T00:00:00+08:00" }], [message()], store.revision);
