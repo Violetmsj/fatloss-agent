@@ -47,6 +47,9 @@ export interface ProfileInput {
   trainingDays: TrainingDay[];
 }
 
+// 自然语言更新只允许覆盖已建档字段的一部分；更新时间仅由数据库生成。
+export type ProfilePatch = Partial<ProfileInput>;
+
 export interface Profile extends ProfileInput {
   updatedAt: string;
 }

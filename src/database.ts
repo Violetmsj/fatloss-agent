@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { type Profile, type ProfileInput, validateProfile } from "./profile.ts";
+import { type Profile, type ProfileInput, type ProfilePatch, validateProfile } from "./profile.ts";
 
 const PROFILE_COLUMNS = `
   gender, age, weight_kg, height_cm, body_fat_pct, waist_cm, hip_cm,
@@ -32,6 +32,32 @@ interface ProfileRow {
   focus_area: Profile["focusArea"];
   training_days_json: string;
   updated_at: string;
+}
+
+export class ProfileNotFoundError extends Error {
+  constructor() {
+    super("尚未建立减脂画像");
+    this.name = "ProfileNotFoundError";
+  }
+}
+
+export class ProfileUpdateValidationError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ProfileUpdateValidationError";
+  }
+}
+
+export class ProfileStorageError extends Error {
+  constructor(cause: unknown) {
+    super("减脂画像保存失败，请稍后重试。", { cause });
+    this.name = "ProfileStorageError";
+  }
+}
+
+export interface ProfileUpdateResult {
+  before: Profile;
+  after: Profile;
 }
 
 function fromRow(row: ProfileRow): Profile {
@@ -96,9 +122,7 @@ export class ProfileRepository {
     return row ? fromRow(row) : null;
   }
 
-  save(input: ProfileInput): Profile {
-    validateProfile(input);
-    const updatedAt = new Date().toISOString();
+  private saveValidated(input: ProfileInput, updatedAt: string): Profile {
     const values = [
       input.gender,
       input.age,
@@ -145,16 +169,70 @@ export class ProfileRepository {
         updated_at = excluded.updated_at
     `);
 
-    // 覆盖画像必须原子化：任何一步失败都保留上一份完整画像。
-    this.db.exec("BEGIN IMMEDIATE");
+    statement.run(...values);
+    return { ...input, updatedAt };
+  }
+
+  private transaction<T>(operation: () => T): T {
+    let started = false;
     try {
-      statement.run(...values);
+      this.db.exec("BEGIN IMMEDIATE");
+      started = true;
+      const result = operation();
       this.db.exec("COMMIT");
+      started = false;
+      return result;
     } catch (error) {
-      this.db.exec("ROLLBACK");
+      if (started) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // 保留原始失败原因，避免回滚失败掩盖真正的数据库错误。
+        }
+      }
       throw error;
     }
-    return { ...input, updatedAt };
+  }
+
+  save(input: ProfileInput): Profile {
+    validateProfile(input);
+    return this.transaction(() => this.saveValidated(input, new Date().toISOString()));
+  }
+
+  update(changes: ProfilePatch): ProfileUpdateResult {
+    if (Object.keys(changes).length === 0) {
+      throw new ProfileUpdateValidationError("请至少提供一个需要更新的画像字段");
+    }
+
+    try {
+      return this.transaction(() => {
+        const before = this.get();
+        if (!before) throw new ProfileNotFoundError();
+
+        if (
+          changes.bodyFatPct !== undefined &&
+          changes.targetBodyFatPct === undefined &&
+          changes.bodyFatPct <= before.targetBodyFatPct
+        ) {
+          throw new ProfileUpdateValidationError(
+            `新的当前体脂率已达到或低于现有目标体脂率 ${before.targetBodyFatPct}%。请先让用户提供不高于 ${changes.bodyFatPct}% 的新目标体脂率，再一并更新。`,
+          );
+        }
+
+        const input: ProfileInput = { ...before, ...changes };
+        try {
+          validateProfile(input);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "画像字段不合法";
+          throw new ProfileUpdateValidationError(`画像未更新：${message}`, { cause: error });
+        }
+
+        return { before, after: this.saveValidated(input, new Date().toISOString()) };
+      });
+    } catch (error) {
+      if (error instanceof ProfileNotFoundError || error instanceof ProfileUpdateValidationError) throw error;
+      throw new ProfileStorageError(error);
+    }
   }
 
   close(): void {
