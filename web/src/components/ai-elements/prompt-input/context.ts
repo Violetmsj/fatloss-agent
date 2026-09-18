@@ -178,6 +178,7 @@ export function usePromptInputProvider(props: {
     const submittedText = textInput.value
     const submittedFiles = [...files.value]
     const submittedIds = new Set(submittedFiles.map(file => file.id))
+    let detachedFiles: AttachmentFile[] | null = null
     clearInput()
 
     try {
@@ -202,13 +203,19 @@ export function usePromptInputProvider(props: {
         files: processedFiles,
       }
 
-      await props.onSubmit(message)
-
+      // sendMessage 会等待整个模型流结束；请求开始前先移除本次附件，让输入框立即进入下一轮状态。
       clearSubmittedFiles(submittedIds)
+      detachedFiles = processedFiles
+      await props.onSubmit(message)
     }
     catch (e) {
       if (textInput.value === '') {
         setTextInput(submittedText)
+      }
+      if (detachedFiles) {
+        // 提交失败时恢复已转成 Data URL 的附件，同时保留等待期间新加入的文件。
+        const currentIds = new Set(files.value.map(file => file.id))
+        files.value = [...detachedFiles.filter(file => !currentIds.has(file.id)), ...files.value]
       }
 
       if (props.onError) {

@@ -7,14 +7,16 @@ import ChatImageAttachments from "./ChatImageAttachments.vue";
 import ChatImageUploadButton from "./ChatImageUploadButton.vue";
 import { PromptInput, PromptInputBody, PromptInputTextarea } from "./ai-elements/prompt-input";
 
+let submitHandler: (message: unknown) => Promise<void> = async () => {};
+
 const Harness = defineComponent({
     components: { ChatImageAttachments, ChatImageUploadButton, PromptInput, PromptInputBody, PromptInputTextarea },
     setup() {
         const errors = ref<string[]>([]);
-        return { errors };
+        return { errors, submit: (message: unknown) => submitHandler(message) };
     },
     template: `
-        <PromptInput accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" multiple :max-files="4" :max-file-size="5 * 1024 * 1024" @error="errors.push($event.code)">
+        <PromptInput accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" multiple :max-files="4" :max-file-size="5 * 1024 * 1024" @submit="submit" @error="errors.push($event.code)">
             <ChatImageAttachments />
             <PromptInputBody><PromptInputTextarea /></PromptInputBody>
             <ChatImageUploadButton />
@@ -29,6 +31,7 @@ function chooseFiles(wrapper: ReturnType<typeof mount>, files: File[]): Promise<
 }
 
 beforeEach(() => {
+    submitHandler = async () => {};
     vi.stubGlobal("URL", {
         ...URL,
         createObjectURL: vi.fn((file: File) => `blob:${file.name}`),
@@ -60,5 +63,35 @@ describe("聊天图片附件", () => {
         await chooseFiles(wrapper, Array.from({ length: 5 }, (_, index) => new File(["image"], `${index}.png`, { type: "image/png" })));
         expect((wrapper.vm as unknown as { errors: string[] }).errors).toContain("max_files");
         expect(wrapper.findAll(".image-attachment")).toHaveLength(4);
+    });
+
+    it("发送开始后立即清空附件，不等待模型回答结束", async () => {
+        let finishSubmit: (() => void) | undefined;
+        submitHandler = vi.fn(() => new Promise<void>((resolve) => { finishSubmit = resolve; }));
+        vi.stubGlobal("fetch", vi.fn(async () => ({
+            blob: async () => new Blob(["image"], { type: "image/png" }),
+        })));
+        const wrapper = mount(Harness);
+        await chooseFiles(wrapper, [new File(["image"], "午餐.png", { type: "image/png" })]);
+
+        await wrapper.get("form").trigger("submit");
+        await vi.waitFor(() => expect(wrapper.findAll(".image-attachment")).toHaveLength(0));
+        expect(submitHandler).toHaveBeenCalledOnce();
+
+        finishSubmit?.();
+    });
+
+    it("提交失败时恢复本次附件", async () => {
+        submitHandler = vi.fn(async () => { throw new Error("发送失败"); });
+        vi.stubGlobal("fetch", vi.fn(async () => ({
+            blob: async () => new Blob(["image"], { type: "image/png" }),
+        })));
+        const wrapper = mount(Harness);
+        await chooseFiles(wrapper, [new File(["image"], "晚餐.png", { type: "image/png" })]);
+
+        await wrapper.get("form").trigger("submit");
+        await vi.waitFor(() => expect((wrapper.vm as unknown as { errors: string[] }).errors).toContain("submit_error"));
+        expect(wrapper.findAll(".image-attachment")).toHaveLength(1);
+        expect(wrapper.text()).toContain("晚餐.png");
     });
 });
