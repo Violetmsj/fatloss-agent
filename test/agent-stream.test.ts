@@ -30,6 +30,24 @@ function fakeLease(events: AgentSessionEvent[]) {
   };
 }
 
+test("图片通过 prompt options 原样传给 pi-agent", async () => {
+  let received: unknown;
+  const lease = {
+    session: {
+      subscribe: () => () => {},
+      async prompt(text: string, options: unknown) { received = { text, options }; },
+      async abort() {},
+    },
+    release() {},
+    onNotification: () => () => {},
+  } as unknown as PromptLease;
+  const images = [{ type: "image" as const, data: "aGk=", mimeType: "image/png" }];
+
+  await readChunks(createAgentMessageStream({ lease, prompt: "看看", images, signal: new AbortController().signal }));
+
+  assert.deepEqual(received, { text: "看看", options: { images } });
+});
+
 async function readChunks(stream: ReadableStream<UIMessageChunk>): Promise<UIMessageChunk[]> {
   const chunks: UIMessageChunk[] = [];
   for await (const chunk of stream) chunks.push(chunk);

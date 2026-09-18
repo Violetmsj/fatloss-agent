@@ -74,6 +74,11 @@ export class ConversationSessionRegistry {
     return !!this.options.modelRuntime.getModel(this.provider, this.modelId);
   }
 
+  supportsImageInput(): boolean {
+    // pi-ai 会依据模型元数据降级不受支持的图片，因此在进入会话前主动阻止静默丢图。
+    return this.options.modelRuntime.getModel(this.provider, this.modelId)?.input.includes("image") ?? false;
+  }
+
   async list(): Promise<ConversationSummary[]> {
     const sessions = await SessionManager.list(this.options.cwd, this.options.sessionDir);
     return sessions.map((session) => this.toSummary(session));

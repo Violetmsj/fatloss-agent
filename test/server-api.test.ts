@@ -131,7 +131,7 @@ test("聊天 API 要求先建档，并把假 AgentSession 输出为 UI Message S
     release() {},
     onNotification: () => () => {},
   } as unknown as PromptLease;
-  const registry = { acquirePrompt: async () => lease } as unknown as ConversationSessionRegistry;
+  const registry = { acquirePrompt: async () => lease, supportsImageInput: () => true } as unknown as ConversationSessionRegistry;
   try {
     await withServer(profiles, async (baseUrl) => {
       const request = () => fetch(`${baseUrl}/api/conversations/01a0b3f0-eae5-76a0-a9e6-daa60f1ee406/messages`, {
@@ -149,6 +149,32 @@ test("聊天 API 要求先建档，并把假 AgentSession 输出为 UI Message S
       const body = await streamed.text();
       assert.match(body, /测试回复/);
       assert.match(body, /\[DONE\]/);
+    }, registry);
+  } finally {
+    profiles.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("聊天 API 在模型未声明视觉能力时拒绝图片", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fatloss-server-image-"));
+  const profiles = new ProfileRepository(join(directory, "profile.sqlite"));
+  const registry = {
+    supportsImageInput: () => false,
+    acquirePrompt: async () => { throw new Error("不应获取会话"); },
+  } as unknown as ConversationSessionRegistry;
+  try {
+    profiles.save(validProfile);
+    await withServer(profiles, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/conversations/01a0b3f0-eae5-76a0-a9e6-daa60f1ee406/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: "user", parts: [
+          { type: "file", mediaType: "image/png", url: "data:image/png;base64,aGk=" },
+        ] }] }),
+      });
+      assert.equal(response.status, 422);
+      assert.equal((await response.json() as { error: { code: string } }).error.code, "IMAGE_INPUT_UNSUPPORTED");
     }, registry);
   } finally {
     profiles.close();

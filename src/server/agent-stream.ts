@@ -4,11 +4,13 @@ import { createUIMessageStream, type UIMessageChunk, type UIMessageStreamWriter 
 
 import type { PromptLease } from "./conversation-registry.ts";
 import { toErrorMessage } from "./errors.ts";
+import type { ChatImage } from "./messages.ts";
 import { getToolTitle, presentToolError, presentToolInput, presentToolOutput } from "./tool-presentation.ts";
 
 export interface AgentStreamOptions {
   lease: PromptLease;
   prompt: string;
+  images?: ChatImage[];
   signal: AbortSignal;
   idleTimeoutMs?: number;
   hardTimeoutMs?: number;
@@ -103,7 +105,8 @@ export function createAgentMessageStream(options: AgentStreamOptions) {
       });
 
       try {
-        await options.lease.session.prompt(options.prompt);
+        // pi-agent 只会把 PromptOptions.images 作为多模态内容持久化并传给模型，不能拼进文本提示词。
+        await options.lease.session.prompt(options.prompt, options.images?.length ? { images: options.images } : undefined);
         complete();
       } catch (error) {
         complete(abortReason ? undefined : new Error("Agent 回复失败，请检查模型配置或稍后重试。", { cause: error }));

@@ -62,21 +62,37 @@ export function usePromptInputProvider(props: {
     })
   }
 
+  // 某些浏览器粘贴或拖入文件时不会提供 File.type，允许从受支持的扩展名补全 MIME。
+  const inferImageMediaType = (file: File) => {
+    if (file.type)
+      return file.type
+    const extension = file.name.toLowerCase().split('.').pop()
+    if (extension === 'jpg' || extension === 'jpeg')
+      return 'image/jpeg'
+    if (extension === 'png' || extension === 'webp' || extension === 'gif')
+      return `image/${extension}`
+    return ''
+  }
+
   const addFiles = (incoming: File[] | FileList) => {
     const fileList = Array.from(incoming)
 
     // Validate Accept
     const accepted = fileList.filter(matchesAccept)
-    if (fileList.length && accepted.length === 0) {
+    if (accepted.length !== fileList.length) {
       props.onError?.({ code: 'accept', message: 'No files match the accepted types.' })
+    }
+    if (fileList.length && accepted.length === 0) {
       return
     }
 
     // Validate Size
     const withinSize = (f: File) => (props.maxFileSize ? f.size <= props.maxFileSize : true)
     const sized = accepted.filter(withinSize)
-    if (accepted.length > 0 && sized.length === 0) {
+    if (sized.length !== accepted.length) {
       props.onError?.({ code: 'max_file_size', message: 'All files exceed the maximum size.' })
+    }
+    if (accepted.length > 0 && sized.length === 0) {
       return
     }
 
@@ -93,7 +109,7 @@ export function usePromptInputProvider(props: {
       id: nanoid(),
       type: 'file',
       url: URL.createObjectURL(file),
-      mediaType: file.type,
+      mediaType: inferImageMediaType(file),
       filename: file.name,
       file,
     }))
@@ -171,7 +187,11 @@ export function usePromptInputProvider(props: {
         submittedFiles.map(async (item) => {
           if (item.url && item.url.startsWith('blob:')) {
             const dataUrl = await convertBlobUrlToDataUrl(item.url)
-            return { ...item, url: dataUrl ?? item.url }
+            // FileReader 可能把空 MIME 写成 application/octet-stream，统一改回前面确认过的图片 MIME。
+            const normalizedDataUrl = dataUrl && item.mediaType
+              ? dataUrl.replace(/^data:[^;,]*/, `data:${item.mediaType}`)
+              : dataUrl
+            return { ...item, url: normalizedDataUrl ?? item.url }
           }
           return item
         }),

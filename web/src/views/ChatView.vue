@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { useChat } from "@ai-sdk/vue";
 import { CheckIcon, CopyIcon, MenuIcon, PencilIcon, PlusIcon, Settings2Icon, XIcon } from "@lucide/vue";
-import { DefaultChatTransport, type DynamicToolUIPart, type UIMessage } from "ai";
+import { DefaultChatTransport, type DynamicToolUIPart, type FileUIPart, type UIMessage } from "ai";
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { api, type Conversation } from "../api";
+import ChatImageAttachments from "../components/ChatImageAttachments.vue";
+import ChatImageUploadButton from "../components/ChatImageUploadButton.vue";
 import { Conversation as ConversationBox, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "../components/ai-elements/conversation";
 import { Loader } from "../components/ai-elements/loader";
 import { Message, MessageAction, MessageActions, MessageContent, MessageResponse } from "../components/ai-elements/message";
-import { PromptInput, PromptInputBody, PromptInputFooter, PromptInputSubmit, PromptInputTextarea, type PromptInputMessage } from "../components/ai-elements/prompt-input";
+import { PromptInput, PromptInputBody, PromptInputFooter, PromptInputSubmit, PromptInputTextarea, PromptInputTools, type PromptInputMessage } from "../components/ai-elements/prompt-input";
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "../components/ai-elements/tool";
 import { Button } from "../components/ui/button";
 
@@ -23,12 +25,19 @@ const sidebarOpen = ref(false);
 const renamingId = ref<string | null>(null);
 const renameValue = ref("");
 const copiedId = ref<string | null>(null);
+const attachmentError = ref("");
+
+const allowedImageTypes = "image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif";
 
 // useChat 负责把消息增量和工具事件合并进当前 UIMessage 列表，并提供停止生成能力。
 const { messages, status, error, sendMessage, stop } = useChat({
     id: conversationId,
     messages: [],
-    transport: new DefaultChatTransport({ api: `/api/conversations/${encodeURIComponent(conversationId)}/messages` }),
+    transport: new DefaultChatTransport({
+        api: `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+        // pi-agent 自己持有完整会话；请求只上传最新消息，避免历史图片被反复编码传输。
+        prepareSendMessagesRequest: ({ messages: currentMessages }) => ({ body: { messages: currentMessages.slice(-1) } }),
+    }),
 });
 const busy = computed(() => status.value === "submitted" || status.value === "streaming");
 const currentConversation = computed(() => conversations.value.find((item) => item.id === conversationId));
@@ -81,10 +90,29 @@ async function handleSubmit(payload: PromptInputMessage): Promise<void> {
         return;
     }
     const text = payload.text.trim();
-    if (!text) return;
-    await sendMessage({ text });
+    if (!text && payload.files.length === 0) return;
+    attachmentError.value = "";
+    // 纯图片也必须携带文本提示；后端会执行同样的兜底，避免绕过 WebUI 时出现行为差异。
+    const submittedText = text || "请分析这些图片。";
+    // 只发送 AI SDK 认识的字段，避免把 File 对象和前端临时 id 一并序列化进请求。
+    const files: FileUIPart[] = payload.files.map((file) => ({
+        type: "file",
+        mediaType: file.mediaType,
+        filename: file.filename,
+        url: file.url,
+    }));
+    await sendMessage(files.length ? { text: submittedText, files } : { text: submittedText });
     const conversation = conversations.value.find((item) => item.id === conversationId);
-    if (conversation && !conversation.firstMessage) conversation.firstMessage = text;
+    if (conversation && !conversation.firstMessage) conversation.firstMessage = submittedText;
+}
+
+function handleAttachmentError(error: { code: string; message: string }): void {
+    const messages: Record<string, string> = {
+        accept: "仅支持 JPEG、PNG、WebP 和 GIF 图片。",
+        max_file_size: "每张图片不能超过 5MB。",
+        max_files: "单次最多上传 4 张图片。",
+    };
+    attachmentError.value = messages[error.code] ?? error.message;
 }
 
 async function copyMessage(message: UIMessage): Promise<void> {
@@ -96,6 +124,10 @@ async function copyMessage(message: UIMessage): Promise<void> {
 
 function isDynamicTool(part: UIMessage["parts"][number]): part is DynamicToolUIPart {
     return part.type === "dynamic-tool";
+}
+
+function isImageFile(part: UIMessage["parts"][number]): part is FileUIPart {
+    return part.type === "file" && part.mediaType.startsWith("image/");
 }
 
 function hasToolInput(input: unknown): boolean {
@@ -144,6 +176,7 @@ function hasToolInput(input: unknown): boolean {
                             <MessageContent>
                                 <template v-for="(part, index) in message.parts" :key="`${message.id}-${index}`">
                                     <MessageResponse v-if="part.type === 'text'" :content="part.text" />
+                                    <img v-else-if="isImageFile(part)" class="message-image" :src="part.url" :alt="part.filename || '用户上传图片'">
                                     <Tool v-else-if="isDynamicTool(part)" class="tool-card">
                                         <ToolHeader :type="part.type" :state="part.state" :tool-name="part.toolName" :title="part.title" />
                                         <ToolContent><ToolInput v-if="hasToolInput(part.input)" :input="part.input" /><ToolOutput :output="part.output" :error-text="part.errorText" /></ToolContent>
@@ -161,10 +194,12 @@ function hasToolInput(input: unknown): boolean {
                 <ConversationScrollButton />
             </ConversationBox>
             <footer v-if="!loading && !pageError" class="composer-wrap">
-                <PromptInput class="composer" @submit="handleSubmit">
+                <PromptInput class="composer" :accept="allowedImageTypes" multiple :max-files="4" :max-file-size="5 * 1024 * 1024" @submit="handleSubmit" @error="handleAttachmentError">
+                    <ChatImageAttachments />
                     <PromptInputBody><PromptInputTextarea placeholder="告诉我你今天的饮食、训练或困惑…" /></PromptInputBody>
-                    <PromptInputFooter><span>Enter 发送 · Shift+Enter 换行</span><PromptInputSubmit :status="status" :aria-label="busy ? '停止生成' : '发送消息'" @click="busy && $event.preventDefault(); busy && stop()" /></PromptInputFooter>
+                    <PromptInputFooter><PromptInputTools><ChatImageUploadButton /></PromptInputTools><span>Enter 发送 · Shift+Enter 换行</span><PromptInputSubmit :status="status" :aria-label="busy ? '停止生成' : '发送消息'" @click="busy && $event.preventDefault(); busy && stop()" /></PromptInputFooter>
                 </PromptInput>
+                <p v-if="attachmentError" class="attachment-error" role="alert">{{ attachmentError }}</p>
                 <p class="notice">建议仅供健康管理参考，如有疾病或明显不适请咨询专业医生。</p>
             </footer>
         </section>
@@ -187,8 +222,9 @@ nav { min-height: 0; flex: 1; display: grid; align-content: start; gap: .3rem; o
 .profile-link { display: flex; align-items: center; gap: .5rem; color: var(--foreground); text-decoration: none; border-top: 1px solid var(--border); padding: 1rem .5rem .2rem; font-size: .82rem; }.profile-link svg { width: 1rem; }.mobile-close,.menu-button { display: none; }
 .chat-main { min-width: 0; flex: 1; display: flex; flex-direction: column; }.chat-header { height: 4.25rem; flex: none; display: flex; align-items: center; gap: .7rem; border-bottom: 1px solid var(--border); padding: 0 1.25rem; }.chat-header h1 { margin: 0; font-size: .95rem; }.chat-header p { margin: .2rem 0 0; color: var(--muted-foreground); font-size: .7rem; }
 .conversation-box { min-height: 0; }.message-row { max-width: 88%; }.message-stack { min-width: 0; display: grid; gap: .25rem; }.tool-card { width: min(34rem, 100%); border: 1px solid var(--border); }
+.message-image { display: block; width: min(22rem, 100%); max-height: 24rem; border-radius: .7rem; object-fit: contain; background: var(--muted); }
 .waiting { display: flex; gap: .55rem; align-items: center; color: var(--muted-foreground); font-size: .78rem; }.stream-error { border-radius: .6rem; background: color-mix(in srgb, var(--destructive) 8%, transparent); color: var(--destructive); padding: .75rem; font-size: .8rem; }
 .state-message { flex: 1; display: grid; place-content: center; justify-items: center; gap: .8rem; color: var(--muted-foreground); }.error-state { color: var(--destructive); }
-.composer-wrap { flex: none; padding: .75rem clamp(.75rem, 4vw, 2rem) 1rem; background: linear-gradient(transparent, var(--background) 20%); }.composer { max-width: 48rem; margin: 0 auto; }.composer-wrap :deep(textarea) { min-height: 3.2rem; max-height: 10rem; }.composer-wrap footer > span { color: var(--muted-foreground); font-size: .68rem; }.notice { max-width: 48rem; margin: .45rem auto 0; text-align: center; color: var(--muted-foreground); font-size: .63rem; }.sidebar-backdrop { display: none; }
+.composer-wrap { flex: none; padding: .75rem clamp(.75rem, 4vw, 2rem) 1rem; background: linear-gradient(transparent, var(--background) 20%); }.composer { max-width: 48rem; margin: 0 auto; }.composer-wrap :deep(textarea) { min-height: 3.2rem; max-height: 10rem; }.composer-wrap footer > span { margin-left: auto; color: var(--muted-foreground); font-size: .68rem; }.attachment-error { max-width: 48rem; margin: .4rem auto 0; color: var(--destructive); font-size: .7rem; }.notice { max-width: 48rem; margin: .45rem auto 0; text-align: center; color: var(--muted-foreground); font-size: .63rem; }.sidebar-backdrop { display: none; }
 @media (max-width: 760px) { .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 30; transform: translateX(-101%); transition: transform .2s ease; box-shadow: 15px 0 40px rgb(0 0 0 / 18%); }.sidebar.open { transform: translateX(0); }.sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 20; background: rgb(0 0 0 / 28%); }.mobile-close { display: grid; place-items: center; margin-left: auto; border: 0; background: transparent; }.mobile-close svg,.menu-button svg { width: 1.1rem; }.menu-button { display: grid; place-items: center; border: 0; background: transparent; padding: .3rem; }.message-row { max-width: 95%; }.chat-header { padding: 0 .75rem; }.composer-wrap { padding-inline: .6rem; }.notice { display: none; } }
 </style>

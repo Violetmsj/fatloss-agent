@@ -10,7 +10,7 @@ import { calculateEstimate, formatProfile, type ProfileInput, validateProfile } 
 import { createAgentMessageStream } from "./agent-stream.ts";
 import type { ConversationSessionRegistry } from "./conversation-registry.ts";
 import { HttpError, toErrorMessage } from "./errors.ts";
-import { getLastUserText, sessionEntriesToUIMessages } from "./messages.ts";
+import { getLastUserPrompt, sessionEntriesToUIMessages } from "./messages.ts";
 
 export interface CreateServerAppOptions {
   registry: ConversationSessionRegistry;
@@ -26,8 +26,8 @@ export function createServerApp(options: CreateServerAppOptions) {
   const app = express();
   const profiles = options.profiles ?? new ProfileRepository();
   app.disable("x-powered-by");
-  // 表单和聊天请求都是小型 JSON；限制体积可避免误传大文件占满进程内存。
-  app.use(express.json({ limit: "256kb" }));
+  // 图片以 base64 放在 JSON 中；30MB 可容纳 4 张各 5MB 的图片及编码开销。
+  app.use(express.json({ limit: "30mb" }));
 
   // 返回当前画像，同时下发选项和边界，使前端不必复制后端业务常量。
   app.get("/api/profile", (_request, response) => {
@@ -74,9 +74,13 @@ export function createServerApp(options: CreateServerAppOptions) {
   app.post("/api/conversations/:id/messages", async (request, response) => {
     if (!profiles.get()) throw new HttpError(412, "请先完成减脂建档。", "PROFILE_REQUIRED");
     const prompt = typeof request.body?.message === "string"
-      ? request.body.message.trim()
-      : getLastUserText(request.body?.messages);
-    if (!prompt) throw new HttpError(400, "消息不能为空。", "EMPTY_MESSAGE");
+      ? { text: request.body.message.trim(), images: [] }
+      : getLastUserPrompt(request.body?.messages);
+    if (!prompt?.text) throw new HttpError(400, "消息不能为空。", "EMPTY_MESSAGE");
+    // 能力检查放在获取会话租约前，校验失败时不会占用会话锁或写入半条历史。
+    if (prompt.images.length > 0 && !options.registry.supportsImageInput()) {
+      throw new HttpError(422, "当前模型未声明图片输入能力，请在模型配置中启用 image 输入。", "IMAGE_INPUT_UNSUPPORTED");
+    }
 
     const lease = await options.registry.acquirePrompt(request.params.id);
     const controller = new AbortController();
@@ -90,7 +94,7 @@ export function createServerApp(options: CreateServerAppOptions) {
     try {
       await pipeUIMessageStreamToResponse({
         response,
-        stream: createAgentMessageStream({ lease, prompt, signal: controller.signal }),
+        stream: createAgentMessageStream({ lease, prompt: prompt.text, images: prompt.images, signal: controller.signal }),
       });
     } finally {
       ended = true;
