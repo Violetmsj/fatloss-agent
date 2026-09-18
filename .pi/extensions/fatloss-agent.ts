@@ -1,6 +1,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { ProfileRepository } from "../../src/database.ts";
+import { MemoryStore } from "../../src/memory-store.ts";
+import { registerMemoryRuntime } from "../../src/memory-runtime.ts";
 import { formatProfile } from "../../src/profile.ts";
 import { runOnboarding } from "../../src/onboarding.ts";
 import { createFatlossTools } from "../../src/tools/index.ts";
@@ -8,7 +10,10 @@ import { createFatlossTools } from "../../src/tools/index.ts";
 export default function fatlossAgentExtension(pi: ExtensionAPI) {
   // 一个 pi 进程共享一个仓储连接，命令、自动建档和模型工具读取同一份 SQLite 画像。
   const repository = new ProfileRepository();
-  const tools = createFatlossTools(repository);
+  // 资料与记忆复用同一 SQLite 连接；工具处理即时请求，runtime 处理后台提取和上下文加载。
+  const memories = new MemoryStore(repository.db);
+  const tools = createFatlossTools(repository, memories);
+  registerMemoryRuntime(pi, memories, repository);
   const activeToolNames = tools.map((tool) => tool.name);
   let onboardingInProgress = false;
 

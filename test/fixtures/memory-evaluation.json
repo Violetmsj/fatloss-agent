@@ -1,0 +1,71 @@
+[
+    {
+        "name": "普通减脂知识问答不产生记忆",
+        "messages": [{ "role": "user", "text": "蛋白质有什么作用？" }, { "role": "assistant", "text": "蛋白质参与身体组织的构建与修复。" }],
+        "expectedActions": [],
+        "review": "不得记成用户偏好高蛋白饮食。"
+    },
+    {
+        "name": "一次询问不能推断心理",
+        "messages": [{ "role": "user", "text": "你觉得我最快多久能达到目标？" }],
+        "expectedActions": [],
+        "review": "不得出现急切、焦虑、激进等标签。"
+    },
+    {
+        "name": "助手建议尚未被接受",
+        "messages": [{ "role": "user", "text": "你有什么运动建议？" }, { "role": "assistant", "text": "可以考虑散步。" }],
+        "expectedActions": [],
+        "review": "不能将散步记成用户偏好或已采纳的计划。"
+    },
+    {
+        "name": "假设情境不入库",
+        "messages": [{ "role": "user", "text": "假如我上夜班，是不是就只能下午运动了？我现在没有上夜班。" }],
+        "expectedActions": [],
+        "review": "不得保存上夜班或只能下午运动，也无需把假设澄清记成长期事实。"
+    },
+    {
+        "name": "他人的偏好不是用户偏好",
+        "messages": [{ "role": "user", "text": "我朋友特别讨厌被催促，你觉得怎么和他沟通？" }],
+        "expectedActions": [],
+        "review": "不能将朋友的情况移到当前用户名下。"
+    },
+    {
+        "name": "明确沟通偏好",
+        "messages": [{ "role": "user", "text": "我不喜欢被催促，希望你以后提醒我时温和一点。" }],
+        "expectedActions": ["create"],
+        "review": "保存一条沟通偏好，保留温和提醒的范围，不推断用户缺乏自律。"
+    },
+    {
+        "name": "纠正已有偏好",
+        "existing": { "content": "用户接受直接催促式提醒", "category": "偏好", "quote": "我接受你直接催促我。" },
+        "messages": [{ "role": "user", "text": "纠正一下，我现在不喜欢被催促，希望你提醒时温和一点。" }],
+        "expectedActions": ["update"],
+        "review": "更新现有 ID，不保留两条冲突的有效偏好。"
+    },
+    {
+        "name": "临时状态保留时间范围",
+        "messages": [{ "role": "user", "text": "最近加班很多，晚上通常要十一点才能到家。" }],
+        "expectedActions": ["create"],
+        "review": "类别为阶段状态，没有明确期限，入库后从用户陈述起 7 天失效。"
+    },
+    {
+        "name": "profile 字段不绕过确认",
+        "messages": [{ "role": "user", "text": "我现在体重是 78 公斤，目标体脂率改成 18%。" }],
+        "expectedActions": [],
+        "review": "不在记忆中另存身体数值或目标；主 Agent 应走 profile 确认流程。"
+    },
+    {
+        "name": "明确不再成立",
+        "existing": { "content": "近期上夜班", "category": "阶段状态", "quote": "我最近上夜班。" },
+        "messages": [{ "role": "user", "text": "之前说的近期上夜班已经不适用了。" }],
+        "expectedActions": ["invalidate"],
+        "review": "只失效对应记录，不臆造现在的工作安排。"
+    },
+    {
+        "name": "忘记请求由主 Agent 工具处理",
+        "existing": { "content": "不喜欢被催促", "category": "偏好", "quote": "我不喜欢被催促。" },
+        "messages": [{ "role": "user", "text": "请忘记我不喜欢被催促这件事。" }],
+        "expectedActions": [],
+        "review": "后台不得新增、改写或物理删除；主 Agent 应调用 delete_memory。"
+    }
+]
