@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
 
-import { api, ApiError, type ProfileFormDefinition, type ProfileInput, type ProfilePreview } from "../api";
+import { api, ApiError, type Profile, type ProfileFormDefinition, type ProfileInput, type ProfilePreview } from "../api";
 import { validateProfileForm, type ProfileErrors } from "../profile-validation";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 
 const props = defineProps<{
     definition: ProfileFormDefinition;
-    initialProfile?: ProfileInput | null;
+    initialProfile?: ProfileInput | Profile | null;
     submitLabel?: string;
 }>();
-const emit = defineEmits<{ saved: [profile: ProfileInput] }>();
+const emit = defineEmits<{ saved: [profile: Profile] }>();
 
 const emptyProfile = (): ProfileInput => ({
     gender: "",
@@ -25,7 +25,7 @@ const emptyProfile = (): ProfileInput => ({
     targetBodyFatPct: 20,
     dailyEnergyDeficitKcal: 500,
     dietExercisePreference: "",
-    activityFrequency: "",
+    activityLevel: "",
     jobType: "",
     favoriteExercises: [],
     equipment: [],
@@ -35,9 +35,10 @@ const emptyProfile = (): ProfileInput => ({
 });
 
 // Vue reactive 对象不能直接 structuredClone；显式复制三个数组也避免修改父组件传入值。
-function copyProfile(profile: ProfileInput): ProfileInput {
+function copyProfile(profile: ProfileInput | Profile): ProfileInput {
     return {
         ...profile,
+        activityLevel: profile.activityLevel ?? "",
         favoriteExercises: [...profile.favoriteExercises],
         equipment: [...profile.equipment],
         trainingDays: [...profile.trainingDays],
@@ -98,12 +99,12 @@ async function confirmSave(): Promise<void> {
 }
 
 const numberFields = [
-    { key: "age", label: "年龄", unit: "岁", step: 1 },
-    { key: "heightCm", label: "身高", unit: "cm", step: 0.1 },
-    { key: "weightKg", label: "体重", unit: "kg", step: 0.1 },
-    { key: "bodyFatPct", label: "体脂率", unit: "%", step: 0.1 },
-    { key: "waistCm", label: "腰围", unit: "cm", step: 0.1 },
-    { key: "hipCm", label: "臀围（选填）", unit: "cm", step: 0.1 },
+    { key: "age", index: "02", label: "年龄", unit: "岁", step: 1 },
+    { key: "heightCm", index: "03", label: "身高", unit: "cm", step: 0.1 },
+    { key: "weightKg", index: "04", label: "体重", unit: "kg", step: 0.1 },
+    { key: "bodyFatPct", index: "05", label: "体脂率", unit: "%", step: 0.1 },
+    { key: "waistCm", index: "06", label: "腰围", unit: "cm", step: 0.1 },
+    { key: "hipCm", index: "07", label: "臀围（选填）", unit: "cm", step: 0.1 },
 ] as const;
 </script>
 
@@ -138,7 +139,7 @@ const numberFields = [
             <header><span>03</span><div><h2>生活方式</h2><p>让建议更贴近你的日常节奏。</p></div></header>
             <div class="field-grid">
                 <label class="field"><span>吃动偏好</span><select v-model="form.dietExercisePreference" :aria-invalid="!!errors.dietExercisePreference"><option disabled value="">请选择</option><option v-for="option in definition.options.dietExercisePreferences" :key="option">{{ option }}</option></select><small v-if="errors.dietExercisePreference" class="error">{{ errors.dietExercisePreference }}</small></label>
-                <label class="field"><span>运动频次</span><select v-model="form.activityFrequency" :aria-invalid="!!errors.activityFrequency"><option disabled value="">请选择</option><option v-for="option in definition.options.activityFrequencies" :key="option">{{ option }}</option></select><small v-if="errors.activityFrequency" class="error">{{ errors.activityFrequency }}</small></label>
+                <label class="field"><span>活动水平</span><select v-model="form.activityLevel" :aria-invalid="!!errors.activityLevel"><option disabled value="">请选择</option><option v-for="option in definition.options.activityLevels" :key="option.value" :value="option.value">{{ option.value }}（{{ option.description }}）× {{ option.factor }}</option></select><small>请选择当前活动水平，不是未来计划的训练频次。{{ initialProfile?.activityLevel === null ? "原画像的活动水平待补充。" : "" }}</small><small v-if="errors.activityLevel" class="error">{{ errors.activityLevel }}</small></label>
                 <label class="field"><span>工作类型</span><select v-model="form.jobType" :aria-invalid="!!errors.jobType"><option disabled value="">请选择</option><option v-for="option in definition.options.jobTypes" :key="option">{{ option }}</option></select><small v-if="errors.jobType" class="error">{{ errors.jobType }}</small></label>
                 <label class="field"><span>连续爬五层楼的反应</span><select v-model="form.stairResponse" :aria-invalid="!!errors.stairResponse"><option disabled value="">请选择</option><option v-for="option in definition.options.stairResponses" :key="option">{{ option }}</option></select><small v-if="errors.stairResponse" class="error">{{ errors.stairResponse }}</small></label>
             </div>
@@ -159,30 +160,91 @@ const numberFields = [
     </form>
 
     <Dialog v-model:open="showPreview">
-        <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-xl">
-            <DialogHeader><DialogTitle>确认你的减脂画像</DialogTitle><DialogDescription>以下是静态热量换算的粗略估计，仅供制定计划参考。</DialogDescription></DialogHeader>
+        <DialogContent class="profile-dialog" :show-close-button="false">
+            <DialogHeader><span class="dialog-eyebrow">Calibration output / 校准结果</span><DialogTitle>确认你的减脂画像</DialogTitle><DialogDescription>以下是静态热量换算的粗略估计，仅供制定计划参考。</DialogDescription></DialogHeader>
             <div v-if="preview" class="preview-card">
                 <div class="estimate-grid"><div><strong>{{ preview.estimate.targetWeightKg.toFixed(1) }}</strong><span>目标体重 kg</span></div><div><strong>{{ preview.estimate.fatLossKg.toFixed(1) }}</strong><span>预计减重 kg</span></div><div><strong>{{ preview.estimate.estimatedWeeks }}</strong><span>预计周数</span></div><div><strong>{{ preview.estimate.speed }}</strong><span>速度</span></div></div>
                 <pre>{{ preview.summary }}</pre>
             </div>
-            <DialogFooter><Button variant="outline" :disabled="loading" @click="preview = null">返回修改</Button><Button :disabled="loading" @click="confirmSave">{{ loading ? "正在保存…" : "确认并保存" }}</Button></DialogFooter>
+            <DialogFooter><span class="dialog-note">保存前可随时返回修改</span><Button variant="outline" :disabled="loading" @click="preview = null">返回修改</Button><Button :disabled="loading" @click="confirmSave">{{ loading ? "正在保存…" : "确认并保存" }}</Button></DialogFooter>
         </DialogContent>
     </Dialog>
 </template>
 
 <style scoped>
-.profile-form { display: grid; gap: 1rem; }
-.form-section { border: 1px solid var(--border); border-radius: 1rem; background: color-mix(in srgb, var(--card) 92%, transparent); padding: clamp(1rem, 3vw, 1.75rem); box-shadow: 0 12px 32px rgb(28 48 36 / 5%); }
-.form-section header { display: flex; align-items: flex-start; gap: .8rem; margin-bottom: 1.4rem; }
-.form-section header > span { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: .65rem; background: var(--primary); color: var(--primary-foreground); font: 700 .75rem/1 monospace; }
-h2 { margin: 0; font-size: 1.05rem; } p { margin: .2rem 0 0; color: var(--muted-foreground); font-size: .86rem; }
-.field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }.field-stack { display: grid; gap: 1.15rem; }.span-2 { grid-column: span 2; }
-.field { display: grid; gap: .45rem; border: 0; padding: 0; min-width: 0; }.field > span,.field legend { font-size: .86rem; font-weight: 650; }.field small { color: var(--muted-foreground); font-size: .76rem; }
-input[type="number"], select { width: 100%; height: 2.65rem; border: 1px solid var(--input); border-radius: .65rem; background: var(--background); padding: 0 .8rem; outline: none; }
-input:focus,select:focus { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent); } [aria-invalid="true"] input,[aria-invalid="true"] select,input[aria-invalid="true"],select[aria-invalid="true"] { border-color: var(--destructive); }
-.input-with-unit { position: relative; }.input-with-unit input { padding-right: 3.5rem; }.input-with-unit b { position: absolute; right: .8rem; top: 50%; transform: translateY(-50%); color: var(--muted-foreground); font-size: .76rem; }
-.choice-row { display: flex; gap: .55rem; }.wrap { flex-wrap: wrap; }.choice input { position: absolute; opacity: 0; pointer-events: none; }.choice span { display: inline-flex; min-height: 2.4rem; align-items: center; border: 1px solid var(--border); border-radius: .65rem; padding: .55rem .85rem; background: var(--background); cursor: pointer; font-size: .84rem; }.choice input:checked + span { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--background)); color: var(--primary); font-weight: 650; }.day span { min-width: 3.3rem; justify-content: center; }
-.error { color: var(--destructive) !important; }.server-error { border-radius: .7rem; background: color-mix(in srgb, var(--destructive) 9%, white); color: var(--destructive); padding: .8rem 1rem; }.form-actions { display: flex; justify-content: flex-end; position: sticky; bottom: 1rem; }
-.preview-card { display: grid; gap: 1rem; }.estimate-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }.estimate-grid div { border-radius: .7rem; background: var(--muted); padding: .8rem; text-align: center; }.estimate-grid strong,.estimate-grid span { display: block; }.estimate-grid strong { color: var(--primary); font-size: 1.15rem; }.estimate-grid span { margin-top: .2rem; color: var(--muted-foreground); font-size: .68rem; }.preview-card pre { white-space: pre-wrap; font: inherit; font-size: .82rem; line-height: 1.75; background: var(--muted); border-radius: .7rem; padding: 1rem; }
-@media (max-width: 640px) { .field-grid { grid-template-columns: 1fr; }.span-2 { grid-column: auto; }.estimate-grid { grid-template-columns: repeat(2, 1fr); }.form-actions { bottom: .5rem; }.form-actions button { width: 100%; } }
+.profile-form { display: grid; counter-reset: profile-field; }
+.form-section { padding-top: .5rem; }
+.form-section header { display: grid; grid-template-columns: 6.5rem minmax(0,1fr); gap: 1.4rem; align-items: start; margin-top: 2.1rem; padding: 1.6rem 0 1.45rem; border-top: 1px solid var(--ink); }
+.form-section:first-child header { margin-top: 1.6rem; }
+.form-section header > span { color: var(--ink); font: 400 2.6rem/1 var(--font-mono); letter-spacing: -.04em; }
+.form-section h2 { margin: 0; font: 600 1.2rem/1.25 var(--font-display); letter-spacing: -.01em; }
+.form-section header p { margin: .45rem 0 0; color: var(--graphite); font-size: .8rem; }
+.field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.4rem 1.9rem; }
+.field-stack { display: grid; gap: 1.4rem; }
+.span-2 { grid-column: 1 / -1; }
+.field { min-width: 0; display: grid; gap: .5rem; margin: 0; padding: 0; border: 0; }
+.field > span,.field legend { display: flex; align-items: center; gap: .5rem; color: var(--ink); font-size: .8rem; font-weight: 450; }
+.field > span::before,.field legend::before { counter-increment: profile-field; content: counter(profile-field, decimal-leading-zero); color: var(--graphite); font: .65rem/1 var(--font-mono); }
+.field small { color: var(--graphite); font-size: .75rem; line-height: 1.6; }
+input[type="number"], select { width: 100%; min-height: 2.9rem; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface); padding: 0 .9rem; color: var(--ink); outline: none; font-variant-numeric: tabular-nums; transition: border-color .18s ease, box-shadow .18s ease, background .18s ease; }
+input[type="number"]:hover,select:hover { border-color: var(--hairline-2); }
+input[type="number"]:focus,select:focus { border-color: var(--lime-ink); box-shadow: 0 0 0 3px var(--lime-soft); }
+[aria-invalid="true"] input,[aria-invalid="true"] select,input[aria-invalid="true"],select[aria-invalid="true"] { border-color: var(--red-ink); background: color-mix(in oklch,var(--red) 7%,var(--surface)); box-shadow: 0 0 0 3px var(--red-soft); }
+.input-with-unit { position: relative; display: flex; align-items: stretch; }
+.input-with-unit input { padding-right: 4rem; }
+.input-with-unit b { position: absolute; inset: 1px 1px 1px auto; min-width: 3.4rem; display: grid; place-items: center; border-left: 1px solid var(--hairline); color: var(--graphite); font: 400 .68rem/1 var(--font-mono); }
+.choice-row { display: flex; gap: .6rem; }
+.wrap { flex-wrap: wrap; }
+.choice { position: relative; }
+.choice input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.choice span { position: relative; min-height: 2.75rem; display: inline-flex; align-items: center; gap: .55rem; padding: 0 1rem; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface); color: var(--ink); cursor: pointer; user-select: none; font-size: .86rem; transition: background .18s ease,border-color .18s ease,color .18s ease; }
+.choice span::before { content: ""; width: .9rem; height: .9rem; flex: none; border: 1px solid var(--hairline-2); border-radius: 3px; }
+.choice input[type="radio"] + span::before { border-radius: 50%; }
+.choice:hover span { border-color: var(--hairline-2); background: color-mix(in oklch,var(--ink) 4%,var(--surface)); }
+.choice input:focus-visible + span { outline: 2px solid var(--lime-ink); outline-offset: 2px; }
+.choice input:checked + span { border-color: var(--ink); background: var(--ink); color: var(--bone); font-weight: 600; }
+.choice input:checked + span::before { content: "✓"; display: grid; place-items: center; border-color: var(--lime); background: var(--lime); color: var(--ink); font: 700 .65rem/1 var(--font-mono); }
+.choice input:checked + span::after { content: ""; position: absolute; top: 0; right: 0; width: .7rem; height: .7rem; background: linear-gradient(225deg,var(--lime) 0 49%,transparent 50%); }
+.day { flex: 1; }
+.day span { width: 100%; min-width: 3.25rem; min-height: 3.5rem; justify-content: center; padding: 0 .45rem; border-radius: 0; }
+.day span::before { display: none; }
+.field:has(.day) .choice-row { gap: 0; overflow: hidden; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface); }
+.field:has(.day) .day span { border: 0; border-right: 1px solid var(--hairline); background: transparent; color: var(--ink); }
+.field:has(.day) .day:last-child span { border-right: 0; }
+.field:has(.day) .day input:checked + span { background: var(--lime-wash); color: var(--ink); box-shadow: inset 0 -2px var(--lime-ink); }
+.field:has(.day) .day input:checked + span::after { display: none; }
+.error { color: var(--red-ink) !important; }
+.server-error { margin: 1.6rem 0 0; padding: .75rem .9rem; border: 1px solid color-mix(in oklch,var(--red-ink) 34%,transparent); border-radius: 10px; background: var(--red-soft); color: var(--red-ink); font-size: .82rem; }
+.form-actions { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 1rem; margin: 2.75rem -3.5rem 0; padding: 1rem 3.5rem; border-top: 1px solid var(--hairline); background: color-mix(in oklch,var(--bone) 90%,transparent); backdrop-filter: blur(10px); }
+.form-actions::before { content: "18 项字段 · 仅存于本机"; margin-right: auto; color: var(--graphite); font: .66rem/1.7 var(--font-mono); }
+.form-actions :deep(button) { min-width: 8rem; }
+.preview-card { display: grid; gap: 1.4rem; }
+.dialog-eyebrow { color: var(--graphite); font: .65rem/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
+.dialog-note { align-self: center; margin-right: auto; color: var(--graphite); font: .65rem/1.4 var(--font-mono); }
+.estimate-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); overflow: hidden; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface-2); }
+.estimate-grid div { min-width: 0; padding: 1rem; border-left: 1px solid var(--hairline); text-align: left; }
+.estimate-grid div:first-child { border-left: 0; }
+.estimate-grid strong,.estimate-grid span { display: block; }
+.estimate-grid strong { color: var(--ink); font: 500 1.85rem/1 var(--font-mono); letter-spacing: -.03em; }
+.estimate-grid span { margin-top: .55rem; color: var(--graphite); font: .62rem/1.4 var(--font-mono); letter-spacing: .06em; }
+.preview-card pre { margin: 0; padding: 1.1rem 1.25rem; white-space: pre-wrap; border: 1px solid var(--hairline); border-left: 3px solid var(--ink); border-radius: 10px; background: var(--surface); color: var(--ink); font: .84rem/1.9 var(--font-body); }
+:global(.profile-dialog) { width: min(41.25rem,calc(100% - 2rem)); max-width: 41.25rem; max-height: 85vh; translate: none !important; transform: translate(-50%,-50%); gap: 1.35rem; overflow-y: auto; padding: 1.75rem; border-color: var(--hairline-2); border-radius: 20px; background: var(--surface); box-shadow: 0 30px 70px -28px color-mix(in oklch,var(--ink) 55%,transparent); }
+:global(.profile-dialog [data-slot="dialog-title"]) { font-family: var(--font-editorial); font-size: 1.65rem; font-weight: 600; }
+:global(.profile-dialog [data-slot="dialog-description"]) { color: var(--graphite); line-height: 1.7; }
+:global([data-slot="dialog-overlay"]) { background: color-mix(in oklch,var(--ink) 48%,transparent); backdrop-filter: blur(3px); }
+@media (max-width: 760px) {
+    .form-section header { grid-template-columns: 3.4rem minmax(0,1fr); gap: .9rem; padding: 1.25rem 0 1.1rem; margin-top: 1.65rem; }
+    .form-section header > span { font-size: 1.9rem; }
+    .form-section h2 { font-size: 1.05rem; }
+    .field-grid { grid-template-columns: 1fr; gap: 1.25rem; }
+    .span-2 { grid-column: auto; }
+    .day span { min-width: 0; font-size: .7rem; }
+    .form-actions { margin: 2rem -1.15rem 0; padding: .8rem 1.15rem; flex-wrap: wrap; }
+    .form-actions::before { flex-basis: 100%; }
+    .form-actions :deep(button) { width: 100%; }
+    .estimate-grid { grid-template-columns: repeat(2,1fr); }
+    .estimate-grid div:nth-child(3) { border-left: 0; border-top: 1px solid var(--hairline); }
+    .estimate-grid div:nth-child(4) { border-top: 1px solid var(--hairline); }
+    :global(.profile-dialog) { top: auto !important; right: auto !important; bottom: 0; left: 50% !important; width: 100% !important; max-width: 100%; max-height: 88vh; transform: translate(-50%,0) !important; border-radius: 20px 20px 0 0; }
+}
 </style>

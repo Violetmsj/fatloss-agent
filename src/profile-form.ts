@@ -1,5 +1,6 @@
 import {
-  ACTIVITY_FREQUENCIES,
+  ACTIVITY_LEVELS,
+  ACTIVITY_LEVEL_DETAILS,
   DIET_EXERCISE_PREFERENCES,
   EQUIPMENT,
   EXERCISES,
@@ -20,7 +21,7 @@ export const profileFormDefinition = {
     genders: GENDERS,
     goals: GOALS,
     dietExercisePreferences: DIET_EXERCISE_PREFERENCES,
-    activityFrequencies: ACTIVITY_FREQUENCIES,
+    activityLevels: ACTIVITY_LEVELS.map((value) => ({ value, ...ACTIVITY_LEVEL_DETAILS[value] })),
     jobTypes: JOB_TYPES,
     exercises: EXERCISES,
     equipment: EQUIPMENT,

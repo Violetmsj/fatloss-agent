@@ -7,9 +7,36 @@ import { type Profile, type ProfileInput, type ProfilePatch, validateProfile } f
 const PROFILE_COLUMNS = `
   gender, age, weight_kg, height_cm, body_fat_pct, waist_cm, hip_cm,
   goal, target_body_fat_pct, daily_energy_deficit_kcal,
-  diet_exercise_preference, activity_frequency, job_type,
+  diet_exercise_preference, activity_level, job_type,
   favorite_exercises_json, equipment_json, stair_response, focus_area,
   training_days_json, updated_at
+`;
+
+const CREATE_PROFILE_TABLE = `
+  CREATE TABLE IF NOT EXISTS profile (
+    -- 个人项目只保留当前画像；id = 1 让数据库层也强制单用户语义。
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    gender TEXT NOT NULL,
+    age INTEGER NOT NULL,
+    weight_kg REAL NOT NULL,
+    height_cm REAL NOT NULL,
+    body_fat_pct REAL NOT NULL,
+    waist_cm REAL NOT NULL,
+    hip_cm REAL,
+    goal TEXT NOT NULL,
+    target_body_fat_pct REAL NOT NULL,
+    daily_energy_deficit_kcal INTEGER NOT NULL,
+    diet_exercise_preference TEXT NOT NULL,
+    activity_level TEXT,
+    legacy_activity_frequency TEXT,
+    job_type TEXT NOT NULL,
+    favorite_exercises_json TEXT NOT NULL,
+    equipment_json TEXT NOT NULL,
+    stair_response TEXT NOT NULL,
+    focus_area TEXT NOT NULL,
+    training_days_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `;
 
 interface ProfileRow {
@@ -24,7 +51,7 @@ interface ProfileRow {
   target_body_fat_pct: number;
   daily_energy_deficit_kcal: number;
   diet_exercise_preference: Profile["dietExercisePreference"];
-  activity_frequency: Profile["activityFrequency"];
+  activity_level: Profile["activityLevel"];
   job_type: Profile["jobType"];
   favorite_exercises_json: string;
   equipment_json: string;
@@ -73,7 +100,7 @@ function fromRow(row: ProfileRow): Profile {
     targetBodyFatPct: row.target_body_fat_pct,
     dailyEnergyDeficitKcal: row.daily_energy_deficit_kcal,
     dietExercisePreference: row.diet_exercise_preference,
-    activityFrequency: row.activity_frequency,
+    activityLevel: row.activity_level,
     jobType: row.job_type,
     favoriteExercises: JSON.parse(row.favorite_exercises_json),
     equipment: JSON.parse(row.equipment_json),
@@ -90,31 +117,25 @@ export class ProfileRepository {
   constructor(databasePath = resolve(process.cwd(), "data", "fatloss.sqlite")) {
     mkdirSync(dirname(databasePath), { recursive: true });
     this.db = new DatabaseSync(databasePath);
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS profile (
-        -- 个人项目只保留当前画像；id = 1 让数据库层也强制单用户语义。
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        gender TEXT NOT NULL,
-        age INTEGER NOT NULL,
-        weight_kg REAL NOT NULL,
-        height_cm REAL NOT NULL,
-        body_fat_pct REAL NOT NULL,
-        waist_cm REAL NOT NULL,
-        hip_cm REAL,
-        goal TEXT NOT NULL,
-        target_body_fat_pct REAL NOT NULL,
-        daily_energy_deficit_kcal INTEGER NOT NULL,
-        diet_exercise_preference TEXT NOT NULL,
-        activity_frequency TEXT NOT NULL,
-        job_type TEXT NOT NULL,
-        favorite_exercises_json TEXT NOT NULL,
-        equipment_json TEXT NOT NULL,
-        stair_response TEXT NOT NULL,
-        focus_area TEXT NOT NULL,
-        training_days_json TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-    `);
+    try {
+      this.transaction(() => {
+        this.db.exec(CREATE_PROFILE_TABLE);
+        const columns = this.db.prepare("PRAGMA table_info(profile)").all();
+        if (columns.some((column) => column.name === "activity_frequency")) {
+          // 旧答案只作为内部历史保留，不猜测新的活动系数。整个迁移与建表共同提交。
+          this.db.exec("ALTER TABLE profile RENAME TO profile_legacy");
+          this.db.exec(CREATE_PROFILE_TABLE);
+          this.db.exec(`
+            INSERT INTO profile (id, ${PROFILE_COLUMNS}, legacy_activity_frequency)
+            SELECT id, ${PROFILE_COLUMNS.replace("activity_level", "NULL")}, activity_frequency FROM profile_legacy;
+            DROP TABLE profile_legacy;
+          `);
+        }
+      });
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
   }
 
   get(): Profile | null {
@@ -122,7 +143,7 @@ export class ProfileRepository {
     return row ? fromRow(row) : null;
   }
 
-  private saveValidated(input: ProfileInput, updatedAt: string): Profile {
+  private saveValidated(input: Omit<Profile, "updatedAt">, updatedAt: string): Profile {
     const values = [
       input.gender,
       input.age,
@@ -135,7 +156,7 @@ export class ProfileRepository {
       input.targetBodyFatPct,
       input.dailyEnergyDeficitKcal,
       input.dietExercisePreference,
-      input.activityFrequency,
+      input.activityLevel,
       input.jobType,
       // SQLite 没有数组类型，问卷多选答案以 JSON 数组保存并在 fromRow 中还原。
       JSON.stringify(input.favoriteExercises),
@@ -159,7 +180,7 @@ export class ProfileRepository {
         target_body_fat_pct = excluded.target_body_fat_pct,
         daily_energy_deficit_kcal = excluded.daily_energy_deficit_kcal,
         diet_exercise_preference = excluded.diet_exercise_preference,
-        activity_frequency = excluded.activity_frequency,
+        activity_level = excluded.activity_level,
         job_type = excluded.job_type,
         favorite_exercises_json = excluded.favorite_exercises_json,
         equipment_json = excluded.equipment_json,
@@ -219,9 +240,9 @@ export class ProfileRepository {
           );
         }
 
-        const input: ProfileInput = { ...before, ...changes };
+        const input = { ...before, ...changes };
         try {
-          validateProfile(input);
+          validateProfile(input, before.activityLevel === null && !("activityLevel" in changes));
         } catch (error) {
           const message = error instanceof Error ? error.message : "画像字段不合法";
           throw new ProfileUpdateValidationError(`画像未更新：${message}`, { cause: error });

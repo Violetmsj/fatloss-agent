@@ -21,7 +21,7 @@ const sampleProfile: ProfileInput = {
   targetBodyFatPct: 20,
   dailyEnergyDeficitKcal: 600,
   dietExercisePreference: "吃动平衡派",
-  activityFrequency: "从不锻炼",
+  activityLevel: "久坐",
   jobType: "中体力工作",
   favoriteExercises: ["步行"],
   equipment: ["不使用器械"],
@@ -63,14 +63,14 @@ test("增量更新可同时覆盖多个字段及多选字段", () => withReposit
   repository.save(sampleProfile);
 
   repository.update({
-    activityFrequency: "经常锻炼",
+    activityLevel: "中度",
     favoriteExercises: ["跑步", "步行"],
     equipment: ["哑铃", "弹力带"],
     trainingDays: ["一", "二", "四"],
   });
 
   const stored = repository.get();
-  assert.equal(stored?.activityFrequency, "经常锻炼");
+  assert.equal(stored?.activityLevel, "中度");
   assert.deepEqual(stored?.favoriteExercises, ["跑步", "步行"]);
   assert.deepEqual(stored?.equipment, ["哑铃", "弹力带"]);
   assert.deepEqual(stored?.trainingDays, ["一", "二", "四"]);

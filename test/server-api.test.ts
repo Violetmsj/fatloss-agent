@@ -24,7 +24,7 @@ const validProfile: ProfileInput = {
   targetBodyFatPct: 18,
   dailyEnergyDeficitKcal: 500,
   dietExercisePreference: "吃动平衡派",
-  activityFrequency: "偶尔锻炼",
+  activityLevel: "轻度",
   jobType: "轻体力工作",
   favoriteExercises: ["步行", "跑步"],
   equipment: ["不使用器械"],
@@ -97,6 +97,10 @@ test("画像 API 拒绝缺失字段、越界值和器械互斥冲突", async () 
       for (const body of [
         {},
         { ...validProfile, age: 17 },
+        { ...validProfile, activityLevel: null },
+        { ...validProfile, activityLevel: "经常锻炼" },
+        { ...validProfile, activityLevel: undefined, activityFrequency: "偶尔锻炼" },
+        { ...validProfile, activityFrequency: "偶尔锻炼" },
         { ...validProfile, equipment: ["哑铃", "不使用器械"] },
       ]) {
         const response = await fetch(`${baseUrl}/api/profile/preview`, {

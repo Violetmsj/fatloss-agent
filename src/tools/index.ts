@@ -6,6 +6,7 @@ import { createGetCurrentProfileTool } from "./get-current-profile.ts";
 import { createSearchFatlossKnowledgeTool } from "./search-fatloss-knowledge.ts";
 import { createUpdateCurrentProfileTool } from "./update-current-profile.ts";
 import { createMemoryTools } from "./memories.ts";
+import { createCalculateEnergyNeedsTool } from "./calculate-energy-needs.ts";
 
 /**
  * Agent 的模型工具统一在此处汇总。
@@ -13,5 +14,5 @@ import { createMemoryTools } from "./memories.ts";
  */
 export function createFatlossTools(repository: ProfileRepository, memories = new MemoryStore(repository.db)) {
   // 工具清单统一交给扩展注册和加入白名单，避免实现了工具却没有对模型开放。
-  return [createGetCurrentTimeTool(), createGetCurrentProfileTool(repository), createUpdateCurrentProfileTool(repository), createSearchFatlossKnowledgeTool(), ...createMemoryTools(memories)];
+  return [createGetCurrentTimeTool(), createGetCurrentProfileTool(repository), createCalculateEnergyNeedsTool(repository), createUpdateCurrentProfileTool(repository), createSearchFatlossKnowledgeTool(), ...createMemoryTools(memories)];
 }

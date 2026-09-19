@@ -7,6 +7,7 @@ import test from "node:test";
 import { ProfileRepository } from "../src/database.ts";
 import { runOnboarding } from "../src/onboarding.ts";
 import { calculateEstimate, getSpeed, type ProfileInput, validateProfile } from "../src/profile.ts";
+import { profileFormDefinition } from "../src/profile-form.ts";
 
 const sampleProfile: ProfileInput = {
   gender: "男",
@@ -20,7 +21,7 @@ const sampleProfile: ProfileInput = {
   targetBodyFatPct: 20,
   dailyEnergyDeficitKcal: 600,
   dietExercisePreference: "吃动平衡派",
-  activityFrequency: "从不锻炼",
+  activityLevel: "久坐",
   jobType: "中体力工作",
   favoriteExercises: ["步行"],
   equipment: ["不使用器械"],
@@ -93,4 +94,34 @@ test("在首个问题取消建档时不会调用保存函数", async () => {
 
   assert.equal(result, null);
   assert.equal(saved, false);
+});
+
+test("TUI 活动选项与 Web 后端定义一致，选中只保存枚举值", async () => {
+  const inputs = ["30", "70", "175", "25", "85", "", "20", "500"];
+  const selections = ["男", "减脂", "吃动平衡派", "中度", "轻体力工作", "否", "不使用器械", "几乎没感觉", "全身", "一", "三", "五", "否"];
+  const context = {
+    mode: "tui",
+    ui: {
+      input: async () => inputs.shift(),
+      select: async (title: string, options: string[]) => {
+        if (title.includes("当前的活动水平")) {
+          assert.deepEqual(options, profileFormDefinition.options.activityLevels.map((item) => `${item.value}（${item.description}）× ${item.factor}`));
+        }
+        const selected = selections.shift();
+        const option = options.find((item) => item === selected || item.startsWith(`${selected}（`));
+        assert.ok(option, `选择应存在：${selected}`);
+        return option;
+      },
+      confirm: async () => true,
+      notify: () => {},
+    },
+  };
+  const result = await runOnboarding(context as never, (input) => {
+    validateProfile(input);
+    return { ...input, updatedAt: "2026-09-19T00:00:00.000Z" };
+  });
+  assert.equal(result?.activityLevel, "中度");
+  assert.equal(result?.jobType, "轻体力工作");
+  assert.equal(inputs.length, 0);
+  assert.equal(selections.length, 0);
 });

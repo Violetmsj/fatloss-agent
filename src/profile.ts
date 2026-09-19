@@ -2,7 +2,14 @@
 export const GENDERS = ["男", "女"] as const;
 export const GOALS = ["减脂", "保持体型"] as const;
 export const DIET_EXERCISE_PREFERENCES = ["少吃躺平派", "吃动平衡派", "运动体验派"] as const;
-export const ACTIVITY_FREQUENCIES = ["从不锻炼", "偶尔锻炼", "经常锻炼", "每天锻炼"] as const;
+export const ACTIVITY_LEVELS = ["久坐", "轻度", "中度", "高强度"] as const;
+// 活动说明、系数由后端统一维护，问卷与计算工具使用同一份配置。
+export const ACTIVITY_LEVEL_DETAILS = {
+  久坐: { description: "几乎不运动", factor: 1.2 },
+  轻度: { description: "每周轻量运动 1～3 天", factor: 1.375 },
+  中度: { description: "每周规律运动 3～5 天", factor: 1.55 },
+  高强度: { description: "每周规律运动 6～7 天", factor: 1.725 },
+} as const;
 export const JOB_TYPES = ["轻体力工作", "中体力工作", "重体力工作"] as const;
 export const EXERCISES = ["健身课程", "跑步", "步行", "跳绳", "爬楼"] as const;
 export const EQUIPMENT = ["哑铃", "弹力带", "不使用器械"] as const;
@@ -18,7 +25,7 @@ export const TRAINING_DAYS = ["一", "二", "三", "四", "五", "六", "日"] a
 export type Gender = (typeof GENDERS)[number];
 export type Goal = (typeof GOALS)[number];
 export type DietExercisePreference = (typeof DIET_EXERCISE_PREFERENCES)[number];
-export type ActivityFrequency = (typeof ACTIVITY_FREQUENCIES)[number];
+export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
 export type JobType = (typeof JOB_TYPES)[number];
 export type Exercise = (typeof EXERCISES)[number];
 export type Equipment = (typeof EQUIPMENT)[number];
@@ -38,7 +45,7 @@ export interface ProfileInput {
   targetBodyFatPct: number;
   dailyEnergyDeficitKcal: number;
   dietExercisePreference: DietExercisePreference;
-  activityFrequency: ActivityFrequency;
+  activityLevel: ActivityLevel;
   jobType: JobType;
   favoriteExercises: Exercise[];
   equipment: Equipment[];
@@ -50,7 +57,9 @@ export interface ProfileInput {
 // 自然语言更新只允许覆盖已建档字段的一部分；更新时间仅由数据库生成。
 export type ProfilePatch = Partial<ProfileInput>;
 
-export interface Profile extends ProfileInput {
+export interface Profile extends Omit<ProfileInput, "activityLevel"> {
+  // 仅旧画像可缺失；新建与整份保存必须补选。
+  activityLevel: ActivityLevel | null;
   updatedAt: string;
 }
 
@@ -78,8 +87,9 @@ function validateDistinct<T extends string>(name: string, values: T[], maximum: 
   }
 }
 
-export function validateProfile(input: ProfileInput): void {
+export function validateProfile(input: Omit<Profile, "updatedAt">, allowMissingActivityLevel = false): void {
   // UI 校验之外再做一次持久化前校验，确保所有 SQLite 写入都满足问卷规则。
+  if ("activityFrequency" in input) throw new Error("运动频次字段已停用，请改用活动水平");
   if (!isOneOf(input.gender, GENDERS)) throw new Error("性别无效");
   validateNumber("年龄", input.age, 18, 100, true);
   validateNumber("体重", input.weightKg, 20, 400);
@@ -91,7 +101,9 @@ export function validateProfile(input: ProfileInput): void {
   validateNumber("目标脂肪率", input.targetBodyFatPct, 1, input.bodyFatPct);
   validateNumber("每日总能量缺口", input.dailyEnergyDeficitKcal, 300, 1000, true);
   if (!isOneOf(input.dietExercisePreference, DIET_EXERCISE_PREFERENCES)) throw new Error("吃动偏好无效");
-  if (!isOneOf(input.activityFrequency, ACTIVITY_FREQUENCIES)) throw new Error("运动频次无效");
+  if (!(allowMissingActivityLevel && input.activityLevel === null) && !isOneOf(input.activityLevel ?? "", ACTIVITY_LEVELS)) {
+    throw new Error("请选择有效的活动水平：久坐、轻度、中度或高强度");
+  }
   if (!isOneOf(input.jobType, JOB_TYPES)) throw new Error("工作类型无效");
   if (!input.favoriteExercises.every((item) => isOneOf(item, EXERCISES))) throw new Error("运动方式无效");
   validateDistinct("运动方式", input.favoriteExercises, 2, 0);
@@ -144,7 +156,7 @@ export function formatProfile(profile: Profile): string {
     `目标：${profile.goal}｜目标体脂率：${profile.targetBodyFatPct}%`,
     `每日总能量缺口：${profile.dailyEnergyDeficitKcal} 千卡｜速度：${estimate.speed}`,
     `粗略预计：${days}`,
-    `吃动偏好：${profile.dietExercisePreference}｜运动频次：${profile.activityFrequency}｜工作类型：${profile.jobType}`,
+    `吃动偏好：${profile.dietExercisePreference}｜${profile.activityLevel === null ? "活动水平待补充" : `活动水平：${profile.activityLevel}（${ACTIVITY_LEVEL_DETAILS[profile.activityLevel].description}）`}｜工作类型：${profile.jobType}`,
     `喜欢运动：${profile.favoriteExercises.join("、") || "未选择"}｜器械：${profile.equipment.join("、")}`,
     `训练日：${profile.trainingDays.join("、")}｜重点改善：${profile.focusArea}`,
     "说明：该估算采用静态热量换算，不考虑代谢变化、测量误差和实际执行情况，仅供参考。",

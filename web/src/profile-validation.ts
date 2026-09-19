@@ -26,9 +26,12 @@ export function validateProfileForm(input: ProfileInput, definition: ProfileForm
     }
     const required: Array<[keyof ProfileInput, string]> = [
         ["gender", "请选择性别"], ["goal", "请选择计划目标"], ["dietExercisePreference", "请选择吃动偏好"],
-        ["activityFrequency", "请选择运动频次"], ["jobType", "请选择工作类型"], ["stairResponse", "请选择爬楼反应"], ["focusArea", "请选择重点部位"],
+        ["activityLevel", "请选择活动水平"], ["jobType", "请选择工作类型"], ["stairResponse", "请选择爬楼反应"], ["focusArea", "请选择重点部位"],
     ];
     for (const [field, message] of required) if (!input[field]) errors[field] = message;
+    if (input.activityLevel && !definition.options.activityLevels.some((option) => option.value === input.activityLevel)) {
+        errors.activityLevel = "请选择有效的活动水平";
+    }
 
     if (input.favoriteExercises.length > definition.constraints.favoriteExercises.maximum) errors.favoriteExercises = `喜欢的运动最多选择 ${definition.constraints.favoriteExercises.maximum} 项`;
     const equipment = definition.constraints.equipment;

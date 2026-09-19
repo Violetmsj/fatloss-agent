@@ -4,17 +4,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProfileFormDefinition, ProfileInput } from "../api";
 import ProfileForm from "./ProfileForm.vue";
+import { profileFormDefinition } from "../../../src/profile-form";
 
 const definition: ProfileFormDefinition = {
     options: {
-        genders: ["男", "女"], goals: ["减脂"], dietExercisePreferences: ["吃动平衡派"], activityFrequencies: ["偶尔锻炼"], jobTypes: ["轻体力工作"], exercises: ["步行", "跑步"], equipment: ["哑铃", "不使用器械"], stairResponses: ["几乎没感觉"], focusAreas: ["全身"], trainingDays: ["一", "二", "三", "四", "五", "六", "日"],
+        genders: ["男", "女"], goals: ["减脂"], dietExercisePreferences: ["吃动平衡派"], activityLevels: [{ value: "轻度", description: "每周轻量运动 1～3 天", factor: 1.375 }], jobTypes: ["轻体力工作"], exercises: ["步行", "跑步"], equipment: ["哑铃", "不使用器械"], stairResponses: ["几乎没感觉"], focusAreas: ["全身"], trainingDays: ["一", "二", "三", "四", "五", "六", "日"],
     },
     constraints: {
         age: { minimum: 18, maximum: 100, integer: true }, weightKg: { minimum: 20, maximum: 400 }, heightCm: { minimum: 80, maximum: 250 }, bodyFatPct: { minimum: 1, maximum: 70 }, waistCm: { minimum: 30, maximum: 250 }, hipCm: { minimum: 30, maximum: 250, optional: true }, targetBodyFatPct: { minimum: 1, maximumField: "bodyFatPct" }, dailyEnergyDeficitKcal: { minimum: 300, maximum: 1000, integer: true }, favoriteExercises: { minimum: 0, maximum: 2 }, equipment: { minimum: 1, maximum: 2, exclusive: "不使用器械" }, trainingDays: { minimum: 3, maximum: 7 },
     },
 };
 const profile: ProfileInput = {
-    gender: "男", age: 30, weightKg: 80, heightCm: 178, bodyFatPct: 25, waistCm: 90, hipCm: null, goal: "减脂", targetBodyFatPct: 18, dailyEnergyDeficitKcal: 500, dietExercisePreference: "吃动平衡派", activityFrequency: "偶尔锻炼", jobType: "轻体力工作", favoriteExercises: ["步行"], equipment: ["哑铃"], stairResponse: "几乎没感觉", focusArea: "全身", trainingDays: ["一", "三", "五"],
+    gender: "男", age: 30, weightKg: 80, heightCm: 178, bodyFatPct: 25, waistCm: 90, hipCm: null, goal: "减脂", targetBodyFatPct: 18, dailyEnergyDeficitKcal: 500, dietExercisePreference: "吃动平衡派", activityLevel: "轻度", jobType: "轻体力工作", favoriteExercises: ["步行"], equipment: ["哑铃"], stairResponse: "几乎没感觉", focusArea: "全身", trainingDays: ["一", "三", "五"],
 };
 const responseBody = {
     profile: { ...profile, updatedAt: "2026-09-18T00:00:00.000Z" },
@@ -28,6 +29,30 @@ afterEach(() => {
 });
 
 describe("画像表单完整提交", () => {
+    it("旧画像活动水平留空，补选前不能提交，补选后保留其他字段", async () => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), { status: 200 }));
+        vi.stubGlobal("fetch", fetchMock);
+        vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+        const legacy = { ...profile, activityLevel: null, updatedAt: "2026-09-19T00:00:00.000Z" };
+        const wrapper = mount(ProfileForm, { props: { definition: profileFormDefinition, initialProfile: legacy }, attachTo: document.body });
+        const field = wrapper.findAll("label").find((label) => label.find("span").text() === "活动水平")!;
+        field.get("select").element.scrollIntoView = vi.fn();
+        expect(field.text()).toContain("活动水平待补充");
+        expect(field.get("select").element.value).toBe("");
+        expect(field.findAll("option").slice(1).map((option) => option.element.value)).toEqual(["久坐", "轻度", "中度", "高强度"]);
+        await wrapper.get("form").trigger("submit");
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(field.text()).toContain("请选择活动水平");
+        await field.get("select").setValue("中度");
+        await wrapper.get("form").trigger("submit");
+        await flushPromises();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
+        expect(body).toMatchObject({ ...profile, activityLevel: "中度" });
+        expect(body).not.toHaveProperty("activityFrequency");
+        expect(legacy.activityLevel).toBeNull();
+        wrapper.unmount();
+    });
     it("先预览，确认后才保存并发出 saved", async () => {
         const fetchMock = vi.fn()
             .mockResolvedValueOnce(new Response(JSON.stringify(responseBody), { status: 200, headers: { "content-type": "application/json" } }))

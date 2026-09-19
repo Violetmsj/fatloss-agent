@@ -19,11 +19,11 @@ const { files, removeFile } = usePromptInput();
 </template>
 
 <style scoped>
-.image-attachment-header { padding: .55rem .65rem .2rem; }
-.image-attachment { position: relative; width: 5.25rem; display: grid; gap: .25rem; }
-.image-attachment img { width: 5.25rem; height: 4rem; border-radius: .5rem; border: 1px solid var(--border); object-fit: cover; background: var(--muted); }
-.image-attachment span { overflow: hidden; color: var(--muted-foreground); font-size: .62rem; text-overflow: ellipsis; white-space: nowrap; }
-.image-attachment button { position: absolute; top: .2rem; right: .2rem; width: 1.25rem; height: 1.25rem; display: grid; place-items: center; border: 0; border-radius: 999px; background: rgb(0 0 0 / 65%); color: white; cursor: pointer; }
-.image-attachment button:hover { background: rgb(0 0 0 / 82%); }
-.image-attachment button svg { width: .75rem; height: .75rem; }
+.image-attachment-header { display: flex; flex-wrap: wrap; gap: .5rem; padding: .15rem .15rem .65rem; }
+.image-attachment { position: relative; max-width: 13.75rem; display: inline-flex; align-items: center; gap: .5rem; padding: .3rem .35rem; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-2); }
+.image-attachment img { width: 2.4rem; height: 2.4rem; flex: none; border: 1px solid var(--hairline); border-radius: 5px; object-fit: cover; background: var(--surface-2); }
+.image-attachment span { max-width: 7.5rem; overflow: hidden; color: var(--ink); font: .68rem/1.4 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.image-attachment button { position: relative; width: 1.75rem; height: 1.75rem; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--graphite); }
+.image-attachment button:hover { color: var(--red-ink); background: var(--red-soft); }
+.image-attachment button svg { width: .8rem; height: .8rem; }
 </style>

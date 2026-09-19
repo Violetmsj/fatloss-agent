@@ -1,6 +1,7 @@
 const TOOL_TITLES: Record<string, string> = {
   get_current_time: "获取当前时间",
   get_current_profile: "读取减脂画像",
+  calculate_energy_needs: "计算每日热量需求",
   update_current_profile: "更新减脂画像",
   search_fatloss_knowledge: "检索减脂知识库",
   list_memories: "查询长期记忆",

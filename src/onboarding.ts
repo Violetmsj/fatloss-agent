@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { type Profile, type ProfileInput, type TrainingDay, ACTIVITY_FREQUENCIES, DIET_EXERCISE_PREFERENCES, EQUIPMENT, EXERCISES, FOCUS_AREAS, GENDERS, GOALS, JOB_TYPES, STAIR_RESPONSES, TRAINING_DAYS, formatProfile } from "./profile.ts";
+import { type Profile, type ProfileInput, type TrainingDay, ACTIVITY_LEVELS, ACTIVITY_LEVEL_DETAILS, DIET_EXERCISE_PREFERENCES, EQUIPMENT, EXERCISES, FOCUS_AREAS, GENDERS, GOALS, JOB_TYPES, STAIR_RESPONSES, TRAINING_DAYS, formatProfile } from "./profile.ts";
 
 const TOTAL_STEPS = 12;
 // 仅用于 TUI 展示；入库仍保存简洁的“轻/中/重体力工作”枚举值，避免把说明文案混入画像数据。
@@ -127,8 +127,10 @@ async function collectProfile(ctx: ExtensionContext): Promise<ProfileInput | nul
       if (dailyEnergyDeficitKcal === undefined || dailyEnergyDeficitKcal === null) return null;
       const dietExercisePreference = await choose(ctx, 6, "您希望的运动饮食比例是？", DIET_EXERCISE_PREFERENCES);
       if (!dietExercisePreference) return null;
-      const activityFrequency = await choose(ctx, 7, "您当前的运动频次是？", ACTIVITY_FREQUENCIES);
-      if (!activityFrequency) return null;
+      const activityLabels = ACTIVITY_LEVELS.map((value) => `${value}（${ACTIVITY_LEVEL_DETAILS[value].description}）× ${ACTIVITY_LEVEL_DETAILS[value].factor}`);
+      const selectedActivity = await choose(ctx, 7, "您当前的活动水平是？（不是未来计划的训练频次）", activityLabels);
+      if (!selectedActivity) return null;
+      const activityLevel = ACTIVITY_LEVELS[activityLabels.indexOf(selectedActivity)]!;
       const jobType = await chooseJobType(ctx);
       if (!jobType) return null;
       const favoriteExercises = await chooseMultiple(ctx, 9, "您喜欢以哪种方式运动？（最多 2 种）", EXERCISES, 0, 2);
@@ -154,7 +156,7 @@ async function collectProfile(ctx: ExtensionContext): Promise<ProfileInput | nul
         targetBodyFatPct,
         dailyEnergyDeficitKcal,
         dietExercisePreference,
-        activityFrequency,
+        activityLevel,
         jobType,
         favoriteExercises,
         equipment,
