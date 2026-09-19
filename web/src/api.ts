@@ -134,5 +134,6 @@ export const api = {
     listConversations: async () => (await request<{ conversations: Conversation[] }>("/api/conversations")).conversations,
     createConversation: async () => (await request<{ conversation: Conversation }>("/api/conversations", { method: "POST" })).conversation,
     renameConversation: (id: string, name: string) => request<void>(`/api/conversations/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+    deleteConversation: (id: string) => request<void>(`/api/conversations/${encodeURIComponent(id)}`, { method: "DELETE" }),
     getMessages: async (id: string) => (await request<{ messages: UIMessage[] }>(`/api/conversations/${encodeURIComponent(id)}/messages`)).messages,
 };

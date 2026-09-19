@@ -64,6 +64,12 @@ export function createServerApp(options: CreateServerAppOptions) {
     response.status(204).end();
   });
 
+  // 删除会话：pi SDK 无删除 API，由 registry 释放运行时并删除 JSONL 文件。
+  app.delete("/api/conversations/:id", async (request, response) => {
+    await options.registry.remove(request.params.id);
+    response.status(204).end();
+  });
+
   // 只恢复当前分支，并转换为 AI SDK UIMessage；thinking 和原始工具结果不会下发。
   app.get("/api/conversations/:id/messages", async (request, response) => {
     const entries = await options.registry.getMessages(request.params.id);

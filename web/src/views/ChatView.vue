@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useChat } from "@ai-sdk/vue";
-import { CheckIcon, CopyIcon, MenuIcon, PencilIcon, PlusIcon, Settings2Icon, XIcon } from "@lucide/vue";
+import { CheckIcon, CopyIcon, MenuIcon, PencilIcon, PlusIcon, Settings2Icon, Trash2Icon, XIcon } from "@lucide/vue";
 import { DefaultChatTransport, type DynamicToolUIPart, type FileUIPart, type UIMessage } from "ai";
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -14,6 +14,7 @@ import { Message, MessageAction, MessageActions, MessageContent, MessageResponse
 import { PromptInput, PromptInputBody, PromptInputFooter, PromptInputSubmit, PromptInputTextarea, PromptInputTools, type PromptInputMessage } from "../components/ai-elements/prompt-input";
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "../components/ai-elements/tool";
 import { Button } from "../components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
 const route = useRoute();
 const router = useRouter();
@@ -26,6 +27,9 @@ const renamingId = ref<string | null>(null);
 const renameValue = ref("");
 const copiedId = ref<string | null>(null);
 const attachmentError = ref("");
+const deleteTarget = ref<Conversation | null>(null);
+const deleting = ref(false);
+const deleteError = ref("");
 
 const allowedImageTypes = "image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif";
 
@@ -81,6 +85,31 @@ async function saveRename(conversation: Conversation): Promise<void> {
     await api.renameConversation(conversation.id, name);
     conversation.name = name;
     renamingId.value = null;
+}
+
+function askDelete(conversation: Conversation): void {
+    deleteTarget.value = conversation;
+    deleteError.value = "";
+}
+
+async function confirmDelete(): Promise<void> {
+    const target = deleteTarget.value;
+    if (!target || deleting.value) return;
+    deleting.value = true;
+    try {
+        await api.deleteConversation(target.id);
+        // 后端列表按最近修改时间排序，过滤后首项即剩余最新会话。
+        conversations.value = conversations.value.filter((item) => item.id !== target.id);
+        deleteTarget.value = null;
+        if (target.id === conversationId) {
+            const next = conversations.value[0];
+            await router.replace(next ? `/chat/${next.id}` : "/start");
+        }
+    } catch (cause) {
+        deleteError.value = cause instanceof Error ? cause.message : "删除失败，请稍后重试。";
+    } finally {
+        deleting.value = false;
+    }
 }
 
 async function handleSubmit(payload: PromptInputMessage): Promise<void> {
@@ -156,6 +185,7 @@ function hasToolInput(input: unknown): boolean {
                         <span class="conversation-title">{{ titleOf(conversation) }}</span><span class="conversation-meta">{{ conversation.messageCount }} 条消息</span>
                         <span v-if="conversation.id === conversationId" class="conversation-marker">▍</span>
                         <button class="rename" type="button" aria-label="重命名会话" @click.stop="startRename(conversation)"><PencilIcon /></button>
+                        <button class="delete" type="button" aria-label="删除会话" @click.stop="askDelete(conversation)"><Trash2Icon /></button>
                     </template>
                 </div>
             </nav>
@@ -212,6 +242,20 @@ function hasToolInput(input: unknown): boolean {
                 <p class="notice">建议仅供健康管理参考，如有疾病或明显不适请咨询专业医生。</p>
             </footer>
         </section>
+
+        <Dialog :open="!!deleteTarget" @update:open="(value: boolean) => { if (!value && !deleting) deleteTarget = null; }">
+            <DialogContent class="delete-dialog">
+                <DialogHeader>
+                    <DialogTitle>删除会话</DialogTitle>
+                    <DialogDescription>将删除「{{ deleteTarget ? titleOf(deleteTarget) : "" }}」的全部聊天记录，删除后不可恢复。</DialogDescription>
+                </DialogHeader>
+                <p v-if="deleteError" class="delete-error" role="alert">{{ deleteError }}</p>
+                <DialogFooter>
+                    <Button variant="outline" :disabled="deleting" @click="deleteTarget = null">取消</Button>
+                    <Button variant="destructive" :disabled="deleting" @click="confirmDelete">{{ deleting ? "正在删除…" : "确认删除" }}</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </main>
 </template>
 
@@ -227,9 +271,9 @@ function hasToolInput(input: unknown): boolean {
 .new-chat { width: calc(100% - 2.25rem); min-height: 2.75rem; justify-content: flex-start; margin: 0 1.125rem .85rem; padding: 0 .85rem; color: var(--lime); border-color: color-mix(in oklch,var(--lime) 42%,transparent); background: color-mix(in oklch,var(--lime) 7%,var(--ink)); clip-path: polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%); }
 .new-chat:hover { color: var(--lime); border-color: var(--lime); background: color-mix(in oklch,var(--lime) 15%,var(--ink)); }
 .new-chat-hint { margin-left: auto; color: color-mix(in oklch,var(--lime) 62%,var(--rail-muted)); font: .62rem/1 var(--font-mono); letter-spacing: .08em; }
-nav { position: relative; min-height: 0; flex: 1; display: grid; align-content: start; overflow-y: auto; border-top: 1px solid var(--rail-line); }
+nav { position: relative; min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0,1fr); align-content: start; overflow-y: auto; border-top: 1px solid var(--rail-line); }
 nav::before { content: ""; position: absolute; left: .55rem; top: .9rem; bottom: .9rem; width: .3rem; opacity: .7; pointer-events: none; background-image: repeating-linear-gradient(to bottom,color-mix(in oklch,var(--bone) 26%,transparent) 0 1px,transparent 1px 8px); }
-.conversation-link { position: relative; min-height: 3.5rem; width: 100%; padding: .55rem 2.8rem .55rem 1.4rem; border: 0; border-bottom: 1px solid var(--rail-line); background: transparent; color: var(--rail-fg); text-align: left; cursor: pointer; transition: background .18s ease; }
+.conversation-link { position: relative; min-height: 3.5rem; width: 100%; padding: .55rem 4.6rem .55rem 1.4rem; border: 0; border-bottom: 1px solid var(--rail-line); background: transparent; color: var(--rail-fg); text-align: left; cursor: pointer; transition: background .18s ease; }
 .conversation-link::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: transparent; }
 .conversation-link:hover { background: color-mix(in oklch,var(--bone) 7%,transparent); }
 .conversation-link.active { background: color-mix(in oklch,var(--lime) 9%,transparent); }
@@ -239,11 +283,13 @@ nav::before { content: ""; position: absolute; left: .55rem; top: .9rem; bottom:
 .conversation-link.active .conversation-title { font-weight: 600; }
 .conversation-meta { margin-top: .15rem; color: var(--rail-muted); font: .65rem/1.3 var(--font-mono); }
 .conversation-marker { position: absolute; top: 1.1rem; right: 1rem; color: var(--lime); font: .65rem/1 var(--font-mono); transition: opacity .18s ease; }
-.rename { position: absolute; right: .55rem; top: .7rem; width: 2rem; height: 2rem; display: grid; place-items: center; opacity: 0; border: 0; border-radius: 7px; background: transparent; color: var(--rail-muted); transition: opacity .18s ease,background .18s ease,color .18s ease; }
-.conversation-link:hover .rename,.conversation-link:focus-within .rename { opacity: 1; }
+.rename,.delete { position: absolute; right: .55rem; top: .7rem; width: 2rem; height: 2rem; display: grid; place-items: center; opacity: 0; border: 0; border-radius: 7px; background: transparent; color: var(--rail-muted); transition: opacity .18s ease,background .18s ease,color .18s ease; }
+.delete { right: 2.4rem; }
+.conversation-link:hover .rename,.conversation-link:focus-within .rename,.conversation-link:hover .delete,.conversation-link:focus-within .delete { opacity: 1; }
 .conversation-link:hover .conversation-marker,.conversation-link:focus-within .conversation-marker { opacity: 0; }
 .rename:hover { color: var(--rail-fg); background: color-mix(in oklch,var(--bone) 10%,transparent); }
-.rename svg,.rename-actions svg { width: .85rem; }
+.delete:hover { color: var(--red-ink); background: color-mix(in oklch,var(--bone) 10%,transparent); }
+.rename svg,.delete svg,.rename-actions svg { width: .85rem; }
 .conversation-link input { width: 100%; height: 2.25rem; padding: 0 .6rem; border: 1px solid var(--lime); border-radius: 8px; outline: none; background: color-mix(in oklch,var(--bone) 6%,var(--ink)); color: var(--rail-fg); font-size: .8rem; }
 .rename-actions { display: flex; justify-content: flex-end; gap: .2rem; margin-top: .4rem; }
 .rename-actions button { width: 2rem; height: 2rem; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--rail-muted); }
@@ -330,6 +376,10 @@ nav::before { content: ""; position: absolute; left: .55rem; top: .9rem; bottom:
 .composer-wrap :deep(button[type="submit"]:hover) { background: color-mix(in oklch,var(--lime) 86%,var(--ink)); }
 .attachment-error { max-width: 48rem; margin: .45rem auto 0; color: var(--red-ink); font-size: .75rem; }
 .notice { max-width: 48rem; margin: .55rem auto 0; text-align: center; color: var(--graphite); font-size: .72rem; }
+.delete-error { color: var(--red-ink); font-size: .8rem; }
+:global(.delete-dialog) { width: min(26rem,calc(100% - 2rem)); max-width: 26rem; translate: none !important; transform: translate(-50%,-50%); gap: 1.1rem; border-color: var(--hairline-2); border-radius: 16px; background: var(--surface); box-shadow: 0 30px 70px -28px color-mix(in oklch,var(--ink) 55%,transparent); }
+:global(.delete-dialog [data-slot="dialog-title"]) { font-family: var(--font-editorial); font-size: 1.3rem; font-weight: 600; }
+:global(.delete-dialog [data-slot="dialog-description"]) { color: var(--graphite); line-height: 1.7; }
 .sidebar-backdrop { display: none; }
 .conversation-box :deep(button[aria-label="Scroll to bottom"]) { bottom: 1rem; border-color: var(--ink); border-radius: 999px; background: var(--ink); color: var(--rail-fg); box-shadow: 0 12px 26px -14px color-mix(in oklch,var(--ink) 70%,transparent); }
 @media (max-width: 760px) {

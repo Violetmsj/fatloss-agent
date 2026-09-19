@@ -9,6 +9,7 @@ import test from "node:test";
 import { ProfileRepository } from "../src/database.ts";
 import type { ProfileInput } from "../src/profile.ts";
 import { createServerApp } from "../src/server/app.ts";
+import { HttpError } from "../src/server/errors.ts";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { ConversationSessionRegistry, PromptLease } from "../src/server/conversation-registry.ts";
 
@@ -36,6 +37,7 @@ const validProfile: ProfileInput = {
 const unusedRegistry = {
   list: async () => [],
   create: async () => { throw new Error("not used"); },
+  remove: async () => { throw new Error("not used"); },
 } as unknown as ConversationSessionRegistry;
 
 async function withServer<T>(profiles: ProfileRepository, operation: (baseUrl: string) => Promise<T>, registry = unusedRegistry): Promise<T> {
@@ -180,6 +182,32 @@ test("聊天 API 在模型未声明视觉能力时拒绝图片", async () => {
       assert.equal(response.status, 422);
       assert.equal((await response.json() as { error: { code: string } }).error.code, "IMAGE_INPUT_UNSUPPORTED");
     }, registry);
+  } finally {
+    profiles.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("删除会话 API 成功返回 204 空响应，并把 registry 的 404 转成业务错误", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fatloss-server-delete-"));
+  const profiles = new ProfileRepository(join(directory, "profile.sqlite"));
+  const removed: string[] = [];
+  const registry = {
+    remove: async (id: string) => {
+      if (id !== "01a0b3f0-eae5-76a0-a9e6-daa60f1ee406") throw new HttpError(404, "会话不存在。", "CONVERSATION_NOT_FOUND");
+      removed.push(id);
+    },
+  } as unknown as ConversationSessionRegistry;
+  try {
+    await withServer(profiles, async (baseUrl) => {
+      const ok = await fetch(`${baseUrl}/api/conversations/01a0b3f0-eae5-76a0-a9e6-daa60f1ee406`, { method: "DELETE" });
+      assert.equal(ok.status, 204);
+      assert.equal(await ok.text(), "");
+      const missing = await fetch(`${baseUrl}/api/conversations/01a0b3f0-eae5-76a0-a9e6-000000000000`, { method: "DELETE" });
+      assert.equal(missing.status, 404);
+      assert.equal((await missing.json() as { error: { code: string } }).error.code, "CONVERSATION_NOT_FOUND");
+    }, registry);
+    assert.deepEqual(removed, ["01a0b3f0-eae5-76a0-a9e6-daa60f1ee406"]);
   } finally {
     profiles.close();
     await rm(directory, { recursive: true, force: true });

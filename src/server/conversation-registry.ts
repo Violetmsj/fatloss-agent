@@ -10,7 +10,7 @@ import {
   createAgentSessionServices,
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
-import { writeFile } from "node:fs/promises";
+import { unlink, writeFile } from "node:fs/promises";
 
 import { HttpError } from "./errors.ts";
 import { createWebExtensionUI, type WebNotification } from "./extension-ui.ts";
@@ -151,6 +151,22 @@ export class ConversationSessionRegistry {
   async abort(id: string): Promise<void> {
     const entry = this.active.get(id);
     if (entry?.running) await entry.runtime.session.abort();
+  }
+
+  async remove(id: string): Promise<void> {
+    // 只删除服务端列表中确认存在的 JSONL 文件，绝不按客户端 id 拼路径。
+    const info = await this.requireInfo(id);
+    // 等待尚在创建中的运行时注册进 active，防止它在删除后才 set 回来而泄漏。
+    const pending = this.opening.get(id);
+    if (pending) await pending.catch(() => {});
+    const entry = this.active.get(id);
+    if (entry) {
+      if (entry.running) await entry.runtime.session.abort();
+      this.active.delete(id);
+      if (entry.timer) clearTimeout(entry.timer);
+      await entry.runtime.dispose();
+    }
+    await unlink(info.path);
   }
 
   async disposeAll(): Promise<void> {
