@@ -16,7 +16,7 @@ import { createUpdateCurrentProfileTool } from "../src/tools/update-current-prof
 
 const profile: ProfileInput = {
     gender: "男", age: 30, heightCm: 175, weightKg: 70, bodyFatPct: 25,
-    waistCm: 85, hipCm: null, goal: "减脂", targetBodyFatPct: 20,
+    waistCm: 85, hipCm: null, targetBodyFatPct: 20,
     dailyEnergyDeficitKcal: 500, dietExercisePreference: "吃动平衡派",
     activityLevel: "中度", jobType: "轻体力工作", favoriteExercises: ["步行"],
     equipment: ["不使用器械"], stairResponse: "几乎没感觉", focusArea: "全身",
@@ -44,15 +44,6 @@ test("四档系数固定，工作类型和计划训练日不额外增加消耗",
             ...profile, activityLevel, jobType: "重体力工作", trainingDays: ["二", "四", "六", "日"],
         }));
     }
-});
-
-test("保持体型采用零缺口，且不修改画像原缺口", () => {
-    const input = { ...profile, goal: "保持体型" as const };
-    const result = calculateEnergyNeeds(input);
-    assert.equal(result.appliedDeficitKcal, 0);
-    assert.equal(result.input.dailyEnergyDeficitKcal, 500);
-    assert.equal(result.intakeKcal, result.tdeeKcal);
-    assert.equal(input.dailyEnergyDeficitKcal, 500);
 });
 
 test("活动水平缺失仅返回代谢参考，非法输入报错且合法最低边界可计算", () => {
@@ -83,7 +74,7 @@ function createLegacyDatabase(path: string): void {
     db.exec(readFileSync(new URL("./fixtures/profile-v1.sql", import.meta.url), "utf8"));
     db.prepare(`INSERT INTO profile VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         profile.gender, profile.age, profile.weightKg, profile.heightCm, profile.bodyFatPct,
-        profile.waistCm, profile.hipCm, profile.goal, profile.targetBodyFatPct,
+        profile.waistCm, profile.hipCm, "保持体型", profile.targetBodyFatPct,
         profile.dailyEnergyDeficitKcal, profile.dietExercisePreference, "经常锻炼", profile.jobType,
         JSON.stringify(profile.favoriteExercises), JSON.stringify(profile.equipment), profile.stairResponse,
         profile.focusArea, JSON.stringify(profile.trainingDays), "2026-09-19T00:00:00.000Z",
@@ -101,6 +92,8 @@ test("旧画像迁移保留数据、时间和记忆，补选前可局部更新�
     const repository = new ProfileRepository(path);
     try {
         assert.deepEqual(repository.get(), { ...profile, activityLevel: null, updatedAt: "2026-09-19T00:00:00.000Z" });
+        const columns = repository.db.prepare("PRAGMA table_info(profile)").all().map((column) => column.name);
+        assert.equal(columns.includes("goal"), false);
         assert.match(formatProfile(repository.get()!), /活动水平待补充/);
         assert.equal(repository.db.prepare("SELECT legacy_activity_frequency AS value FROM profile").get()?.value, "经常锻炼");
         assert.equal(repository.db.prepare("SELECT revision FROM memory_state WHERE id = 1").get()?.revision, 17);

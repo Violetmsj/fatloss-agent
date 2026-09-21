@@ -6,7 +6,6 @@ import {
   EXERCISES,
   FOCUS_AREAS,
   GENDERS,
-  GOALS,
   JOB_TYPES,
   STAIR_RESPONSES,
   TRAINING_DAYS,
@@ -19,7 +18,6 @@ import {
 export const profileFormDefinition = {
   options: {
     genders: GENDERS,
-    goals: GOALS,
     dietExercisePreferences: DIET_EXERCISE_PREFERENCES,
     activityLevels: ACTIVITY_LEVELS.map((value) => ({ value, ...ACTIVITY_LEVEL_DETAILS[value] })),
     jobTypes: JOB_TYPES,

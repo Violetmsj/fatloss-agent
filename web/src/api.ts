@@ -8,7 +8,6 @@ export interface ProfileInput {
     bodyFatPct: number;
     waistCm: number;
     hipCm: number | null;
-    goal: string;
     targetBodyFatPct: number;
     dailyEnergyDeficitKcal: number;
     dietExercisePreference: string;
@@ -28,7 +27,6 @@ export interface Profile extends Omit<ProfileInput, "activityLevel"> {
 
 export interface FormOptions {
     genders: readonly string[];
-    goals: readonly string[];
     dietExercisePreferences: readonly string[];
     activityLevels: readonly { value: string; description: string; factor: number }[];
     jobTypes: readonly string[];

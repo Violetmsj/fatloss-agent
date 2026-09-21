@@ -21,7 +21,6 @@ const emptyProfile = (): ProfileInput => ({
     bodyFatPct: 25,
     waistCm: 80,
     hipCm: null,
-    goal: "减脂",
     targetBodyFatPct: 20,
     dailyEnergyDeficitKcal: 500,
     dietExercisePreference: "",
@@ -129,7 +128,6 @@ const numberFields = [
         <section class="form-section">
             <header><span>02</span><div><h2>减脂目标</h2><p>提交前会先展示估算结果，不会直接保存。</p></div></header>
             <div class="field-grid">
-                <label class="field"><span>计划目标</span><select v-model="form.goal" :aria-invalid="!!errors.goal"><option v-for="option in definition.options.goals" :key="option">{{ option }}</option></select><small v-if="errors.goal" class="error">{{ errors.goal }}</small></label>
                 <label class="field"><span>目标体脂率</span><div class="input-with-unit"><input v-model.number="form.targetBodyFatPct" type="number" step="0.1" :min="definition.constraints.targetBodyFatPct.minimum" :max="form.bodyFatPct" :aria-invalid="!!errors.targetBodyFatPct"><b>%</b></div><small v-if="errors.targetBodyFatPct" class="error">{{ errors.targetBodyFatPct }}</small></label>
                 <label class="field span-2"><span>每日总能量缺口</span><div class="input-with-unit"><input v-model.number="form.dailyEnergyDeficitKcal" type="number" step="1" :min="definition.constraints.dailyEnergyDeficitKcal.minimum" :max="definition.constraints.dailyEnergyDeficitKcal.maximum" :aria-invalid="!!errors.dailyEnergyDeficitKcal"><b>千卡</b></div><small>建议从温和缺口开始，后续结合真实体重变化调整。</small><small v-if="errors.dailyEnergyDeficitKcal" class="error">{{ errors.dailyEnergyDeficitKcal }}</small></label>
             </div>

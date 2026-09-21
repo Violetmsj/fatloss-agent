@@ -8,14 +8,14 @@ import { profileFormDefinition } from "../../../src/profile-form";
 
 const definition: ProfileFormDefinition = {
     options: {
-        genders: ["男", "女"], goals: ["减脂"], dietExercisePreferences: ["吃动平衡派"], activityLevels: [{ value: "轻度", description: "每周轻量运动 1～3 天", factor: 1.375 }], jobTypes: ["轻体力工作"], exercises: ["步行", "跑步"], equipment: ["哑铃", "不使用器械"], stairResponses: ["几乎没感觉"], focusAreas: ["全身"], trainingDays: ["一", "二", "三", "四", "五", "六", "日"],
+        genders: ["男", "女"], dietExercisePreferences: ["吃动平衡派"], activityLevels: [{ value: "轻度", description: "每周轻量运动 1～3 天", factor: 1.375 }], jobTypes: ["轻体力工作"], exercises: ["步行", "跑步"], equipment: ["哑铃", "不使用器械"], stairResponses: ["几乎没感觉"], focusAreas: ["全身"], trainingDays: ["一", "二", "三", "四", "五", "六", "日"],
     },
     constraints: {
         age: { minimum: 18, maximum: 100, integer: true }, weightKg: { minimum: 20, maximum: 400 }, heightCm: { minimum: 80, maximum: 250 }, bodyFatPct: { minimum: 1, maximum: 70 }, waistCm: { minimum: 30, maximum: 250 }, hipCm: { minimum: 30, maximum: 250, optional: true }, targetBodyFatPct: { minimum: 1, maximumField: "bodyFatPct" }, dailyEnergyDeficitKcal: { minimum: 300, maximum: 1000, integer: true }, favoriteExercises: { minimum: 0, maximum: 2 }, equipment: { minimum: 1, maximum: 2, exclusive: "不使用器械" }, trainingDays: { minimum: 3, maximum: 7 },
     },
 };
 const profile: ProfileInput = {
-    gender: "男", age: 30, weightKg: 80, heightCm: 178, bodyFatPct: 25, waistCm: 90, hipCm: null, goal: "减脂", targetBodyFatPct: 18, dailyEnergyDeficitKcal: 500, dietExercisePreference: "吃动平衡派", activityLevel: "轻度", jobType: "轻体力工作", favoriteExercises: ["步行"], equipment: ["哑铃"], stairResponse: "几乎没感觉", focusArea: "全身", trainingDays: ["一", "三", "五"],
+    gender: "男", age: 30, weightKg: 80, heightCm: 178, bodyFatPct: 25, waistCm: 90, hipCm: null, targetBodyFatPct: 18, dailyEnergyDeficitKcal: 500, dietExercisePreference: "吃动平衡派", activityLevel: "轻度", jobType: "轻体力工作", favoriteExercises: ["步行"], equipment: ["哑铃"], stairResponse: "几乎没感觉", focusArea: "全身", trainingDays: ["一", "三", "五"],
 };
 const responseBody = {
     profile: { ...profile, updatedAt: "2026-09-18T00:00:00.000Z" },
@@ -61,9 +61,12 @@ describe("画像表单完整提交", () => {
         vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
         const wrapper = mount(ProfileForm, { props: { definition, initialProfile: profile }, attachTo: document.body });
 
+        expect(wrapper.text()).not.toContain("计划目标");
+
         await wrapper.get("form").trigger("submit");
         await flushPromises();
         expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).not.toHaveProperty("goal");
         expect(document.body.textContent).toContain("确认你的减脂画像");
 
         const confirm = [...document.body.querySelectorAll("button")].find((button) => button.textContent?.includes("确认并保存"));

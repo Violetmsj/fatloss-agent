@@ -12,12 +12,13 @@ import { createSearchFatlossKnowledgeTool } from "../src/tools/search-fatloss-kn
 
 const vector = Array.from({ length: EMBEDDING_DIMENSIONS }, () => 0.1);
 
-test("问答 Markdown 按 26 个标题解析，且每个片段重复原问题", async () => {
+test("问答 Markdown 按 27 个标题解析，且每个片段重复原问题", async () => {
   const markdown = await readFile(resolve(process.cwd(), "knowledge_doc", "减脂-问答汇总.md"), "utf8");
   const chunks = parseFatlossKnowledgeMarkdown(markdown);
 
-  assert.ok(chunks.length >= 26);
-  assert.equal(new Set(chunks.map((chunk) => chunk.questionNumber)).size, 26);
+  assert.ok(chunks.length >= 27);
+  assert.equal(new Set(chunks.map((chunk) => chunk.questionNumber)).size, 27);
+  assert.match(chunks.find((chunk) => chunk.questionNumber === 27)?.document ?? "", /2040 - 300 = 1740/);
   assert.ok(chunks.every((chunk) => chunk.document.startsWith(`问题：${chunk.question}`)));
   assert.ok(chunks.every((chunk) => chunk.contentHash.length === 64));
 });

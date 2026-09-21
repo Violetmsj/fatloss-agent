@@ -22,6 +22,8 @@ fatloss-agent/
 │       └── dg-piagent/               # pi-agent SDK 离线文档检索 skill，不参与产品业务运行
 ├── src/                              # 后端、Agent 业务与共享领域代码
 │   ├── database.ts                   # SQLite 连接与单用户画像仓储 ProfileRepository
+│   ├── daily-record.ts               # 每日记录类型、输入校验与规范化
+│   ├── daily-record-store.ts         # 每日热量快照、饮食与运动明细仓储
 │   ├── profile.ts                    # 画像类型、选项、校验、周期估算与文本格式化
 │   ├── profile-form.ts               # Web 建档表单使用的选项和数值/多选约束
 │   ├── onboarding.ts                 # TUI 的 12 步交互式建档流程
@@ -116,7 +118,7 @@ ChatView.vue
 
 #### 数据存储边界
 
-- 画像和长期记忆：`data/fatloss.sqlite`。二者共享 SQLite 连接，但分别由 `ProfileRepository` 与 `MemoryStore` 管理。
+- 画像、每日记录和长期记忆：`data/fatloss.sqlite`。三者共享 SQLite 连接，分别由 `ProfileRepository`、`DailyRecordStore` 与 `MemoryStore` 管理。
 - 知识源：`knowledge_doc/*.md`；索引后的向量存放在 `data/chroma/`，运行时由本机 Chroma 服务读取。
 - 聊天记录：不在 `data/`。pi-agent 按项目将 JSONL 会话存到 `~/.pi/agent/sessions/<项目目录编码>/`；Web 与 TUI 读取的是同一会话目录。
 - 模型或嵌入凭据：只放 `.env` 或 pi 自身配置，不进入前端、不写入 SQLite、不得提交。
@@ -134,6 +136,15 @@ ChatView.vue
 - `GET /api/health`：报告模型、SQLite、Chroma 和服务状态。
 
 前端只能通过这些 API 与后端通信。会话 ID 必须由后端列表解析，不能接受客户端提供的任意文件路径；前端也不能接触 API Key、SQLite 路径或真实 JSONL 路径。
+
+## 减脂能量计算口径
+
+- 基础代谢使用 Mifflin–St Jeor 公式估算，表示静息状态下的能量消耗参考，不是精确测量值，也不是绝对最低安全摄入量。
+- 每日总消耗估算（TDEE）等于基础代谢估算（BMR）乘以画像中的活动水平系数。
+- 每日摄入参考等于 TDEE 减去画像中的 `dailyEnergyDeficitKcal`；减脂与保持体型均采用画像中已设置的缺口。
+- 例如 BMR 为 1700 千卡、久坐系数为 1.2，则 TDEE 为 `1700 × 1.2 = 2040` 千卡；画像缺口为 300 千卡时，每日摄入参考为 `2040 - 300 = 1740` 千卡。
+- TDEE 已包含活动水平对应的日常活动与运动估算。单独记录的运动消耗用于回顾运动事实，不得再次叠加到 TDEE 或每日摄入参考中。
+- 持续的能量摄入低于消耗通常有助于形成减脂趋势，但实际结果会受到记录误差、代谢适应、体脂测量误差和执行情况影响，不承诺精确结果。
 
 ## 构建、测试与开发命令
 

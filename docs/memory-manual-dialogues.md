@@ -53,7 +53,7 @@ try {
   repository.save({
     gender: '男', age: 26, weightKg: 85.5, heightCm: 171,
     bodyFatPct: 26.5, waistCm: 102, hipCm: null,
-    goal: '减脂', targetBodyFatPct: 20, dailyEnergyDeficitKcal: 600,
+    targetBodyFatPct: 20, dailyEnergyDeficitKcal: 600,
     dietExercisePreference: '吃动平衡派', activityFrequency: '从不锻炼',
     jobType: '中体力工作', favoriteExercises: ['步行'], equipment: ['不使用器械'],
     stairResponse: '呼吸比较局促', focusArea: '全身', trainingDays: ['一', '三', '四', '六'],

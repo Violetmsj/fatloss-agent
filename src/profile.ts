@@ -1,6 +1,5 @@
 // 问卷选项同时作为运行时校验的白名单，防止命令、旧数据库或后续 UI 写入未知值。
 export const GENDERS = ["男", "女"] as const;
-export const GOALS = ["减脂", "保持体型"] as const;
 export const DIET_EXERCISE_PREFERENCES = ["少吃躺平派", "吃动平衡派", "运动体验派"] as const;
 export const ACTIVITY_LEVELS = ["久坐", "轻度", "中度", "高强度"] as const;
 // 活动说明、系数由后端统一维护，问卷与计算工具使用同一份配置。
@@ -23,7 +22,6 @@ export const FOCUS_AREAS = ["全身", "手臂", "胸部", "腹部", "背部", "�
 export const TRAINING_DAYS = ["一", "二", "三", "四", "五", "六", "日"] as const;
 
 export type Gender = (typeof GENDERS)[number];
-export type Goal = (typeof GOALS)[number];
 export type DietExercisePreference = (typeof DIET_EXERCISE_PREFERENCES)[number];
 export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
 export type JobType = (typeof JOB_TYPES)[number];
@@ -41,7 +39,6 @@ export interface ProfileInput {
   bodyFatPct: number;
   waistCm: number;
   hipCm: number | null;
-  goal: Goal;
   targetBodyFatPct: number;
   dailyEnergyDeficitKcal: number;
   dietExercisePreference: DietExercisePreference;
@@ -90,6 +87,7 @@ function validateDistinct<T extends string>(name: string, values: T[], maximum: 
 export function validateProfile(input: Omit<Profile, "updatedAt">, allowMissingActivityLevel = false): void {
   // UI 校验之外再做一次持久化前校验，确保所有 SQLite 写入都满足问卷规则。
   if ("activityFrequency" in input) throw new Error("运动频次字段已停用，请改用活动水平");
+  if ("goal" in input) throw new Error("计划目标字段已移除，当前产品仅用于减脂");
   if (!isOneOf(input.gender, GENDERS)) throw new Error("性别无效");
   validateNumber("年龄", input.age, 18, 100, true);
   validateNumber("体重", input.weightKg, 20, 400);
@@ -97,7 +95,6 @@ export function validateProfile(input: Omit<Profile, "updatedAt">, allowMissingA
   validateNumber("体脂率", input.bodyFatPct, 1, 70);
   validateNumber("腰围", input.waistCm, 30, 250);
   if (input.hipCm !== null) validateNumber("臀围", input.hipCm, 30, 250);
-  if (!isOneOf(input.goal, GOALS)) throw new Error("计划目标无效");
   validateNumber("目标脂肪率", input.targetBodyFatPct, 1, input.bodyFatPct);
   validateNumber("每日总能量缺口", input.dailyEnergyDeficitKcal, 300, 1000, true);
   if (!isOneOf(input.dietExercisePreference, DIET_EXERCISE_PREFERENCES)) throw new Error("吃动偏好无效");
@@ -153,7 +150,7 @@ export function formatProfile(profile: Profile): string {
     `性别：${profile.gender}｜年龄：${profile.age} 岁`,
     `身高：${profile.heightCm} cm｜体重：${profile.weightKg} kg｜体脂率：${profile.bodyFatPct}%`,
     `腰围：${profile.waistCm} cm${profile.hipCm === null ? "" : `｜臀围：${profile.hipCm} cm`}`,
-    `目标：${profile.goal}｜目标体脂率：${profile.targetBodyFatPct}%`,
+    `目标体脂率：${profile.targetBodyFatPct}%`,
     `每日总能量缺口：${profile.dailyEnergyDeficitKcal} 千卡｜速度：${estimate.speed}`,
     `粗略预计：${days}`,
     `吃动偏好：${profile.dietExercisePreference}｜${profile.activityLevel === null ? "活动水平待补充" : `活动水平：${profile.activityLevel}（${ACTIVITY_LEVEL_DETAILS[profile.activityLevel].description}）`}｜工作类型：${profile.jobType}`,

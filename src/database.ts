@@ -2,11 +2,12 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { initializeDailyRecordSchema } from "./daily-record-store.ts";
 import { type Profile, type ProfileInput, type ProfilePatch, validateProfile } from "./profile.ts";
 
 const PROFILE_COLUMNS = `
   gender, age, weight_kg, height_cm, body_fat_pct, waist_cm, hip_cm,
-  goal, target_body_fat_pct, daily_energy_deficit_kcal,
+  target_body_fat_pct, daily_energy_deficit_kcal,
   diet_exercise_preference, activity_level, job_type,
   favorite_exercises_json, equipment_json, stair_response, focus_area,
   training_days_json, updated_at
@@ -23,7 +24,6 @@ const CREATE_PROFILE_TABLE = `
     body_fat_pct REAL NOT NULL,
     waist_cm REAL NOT NULL,
     hip_cm REAL,
-    goal TEXT NOT NULL,
     target_body_fat_pct REAL NOT NULL,
     daily_energy_deficit_kcal INTEGER NOT NULL,
     diet_exercise_preference TEXT NOT NULL,
@@ -47,7 +47,6 @@ interface ProfileRow {
   body_fat_pct: number;
   waist_cm: number;
   hip_cm: number | null;
-  goal: Profile["goal"];
   target_body_fat_pct: number;
   daily_energy_deficit_kcal: number;
   diet_exercise_preference: Profile["dietExercisePreference"];
@@ -96,7 +95,6 @@ function fromRow(row: ProfileRow): Profile {
     bodyFatPct: row.body_fat_pct,
     waistCm: row.waist_cm,
     hipCm: row.hip_cm,
-    goal: row.goal,
     targetBodyFatPct: row.target_body_fat_pct,
     dailyEnergyDeficitKcal: row.daily_energy_deficit_kcal,
     dietExercisePreference: row.diet_exercise_preference,
@@ -118,19 +116,26 @@ export class ProfileRepository {
     mkdirSync(dirname(databasePath), { recursive: true });
     this.db = new DatabaseSync(databasePath);
     try {
+      this.db.exec("PRAGMA foreign_keys = ON");
       this.transaction(() => {
         this.db.exec(CREATE_PROFILE_TABLE);
         const columns = this.db.prepare("PRAGMA table_info(profile)").all();
-        if (columns.some((column) => column.name === "activity_frequency")) {
-          // 旧答案只作为内部历史保留，不猜测新的活动系数。整个迁移与建表共同提交。
+        const columnNames = new Set(columns.map((column) => String(column.name)));
+        if (columnNames.has("goal") || columnNames.has("activity_frequency")) {
+          // 重建旧画像表：删除计划目标，并将旧运动频次仅作为内部历史保留。
+          const activityLevelSource = columnNames.has("activity_level") ? "activity_level" : "NULL";
+          const legacyActivityFrequencySource = columnNames.has("legacy_activity_frequency")
+            ? "legacy_activity_frequency"
+            : columnNames.has("activity_frequency") ? "activity_frequency" : "NULL";
           this.db.exec("ALTER TABLE profile RENAME TO profile_legacy");
           this.db.exec(CREATE_PROFILE_TABLE);
           this.db.exec(`
             INSERT INTO profile (id, ${PROFILE_COLUMNS}, legacy_activity_frequency)
-            SELECT id, ${PROFILE_COLUMNS.replace("activity_level", "NULL")}, activity_frequency FROM profile_legacy;
+            SELECT id, ${PROFILE_COLUMNS.replace("activity_level", activityLevelSource)}, ${legacyActivityFrequencySource} FROM profile_legacy;
             DROP TABLE profile_legacy;
           `);
         }
+        initializeDailyRecordSchema(this.db);
       });
     } catch (error) {
       this.db.close();
@@ -152,7 +157,6 @@ export class ProfileRepository {
       input.bodyFatPct,
       input.waistCm,
       input.hipCm,
-      input.goal,
       input.targetBodyFatPct,
       input.dailyEnergyDeficitKcal,
       input.dietExercisePreference,
@@ -167,7 +171,7 @@ export class ProfileRepository {
       updatedAt,
     ];
     const statement = this.db.prepare(`
-      INSERT INTO profile (id, ${PROFILE_COLUMNS}) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO profile (id, ${PROFILE_COLUMNS}) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         gender = excluded.gender,
         age = excluded.age,
@@ -176,7 +180,6 @@ export class ProfileRepository {
         body_fat_pct = excluded.body_fat_pct,
         waist_cm = excluded.waist_cm,
         hip_cm = excluded.hip_cm,
-        goal = excluded.goal,
         target_body_fat_pct = excluded.target_body_fat_pct,
         daily_energy_deficit_kcal = excluded.daily_energy_deficit_kcal,
         diet_exercise_preference = excluded.diet_exercise_preference,

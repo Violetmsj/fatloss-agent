@@ -5,7 +5,7 @@ import { validateProfileForm } from "./profile-validation";
 
 const definition: ProfileFormDefinition = {
     options: {
-        genders: ["男", "女"], goals: ["减脂"], dietExercisePreferences: ["吃动平衡派"], activityLevels: [{ value: "轻度", description: "每周轻量运动 1～3 天", factor: 1.375 }],
+        genders: ["男", "女"], dietExercisePreferences: ["吃动平衡派"], activityLevels: [{ value: "轻度", description: "每周轻量运动 1～3 天", factor: 1.375 }],
         jobTypes: ["轻体力工作"], exercises: ["步行", "跑步"], equipment: ["哑铃", "不使用器械"], stairResponses: ["几乎没感觉"], focusAreas: ["全身"], trainingDays: ["一", "二", "三", "四", "五", "六", "日"],
     },
     constraints: {
@@ -14,7 +14,7 @@ const definition: ProfileFormDefinition = {
 };
 const profile: ProfileInput = {
     gender: "男", age: 30, weightKg: 80, heightCm: 178, bodyFatPct: 25, waistCm: 90, hipCm: null,
-    goal: "减脂", targetBodyFatPct: 18, dailyEnergyDeficitKcal: 500, dietExercisePreference: "吃动平衡派", activityLevel: "轻度", jobType: "轻体力工作", favoriteExercises: ["步行"], equipment: ["哑铃"], stairResponse: "几乎没感觉", focusArea: "全身", trainingDays: ["一", "三", "五"],
+    targetBodyFatPct: 18, dailyEnergyDeficitKcal: 500, dietExercisePreference: "吃动平衡派", activityLevel: "轻度", jobType: "轻体力工作", favoriteExercises: ["步行"], equipment: ["哑铃"], stairResponse: "几乎没感觉", focusArea: "全身", trainingDays: ["一", "三", "五"],
 };
 
 describe("画像表单校验", () => {

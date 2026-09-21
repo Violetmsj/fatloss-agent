@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { ProfileRepository } from "../src/database.ts";
@@ -17,7 +18,6 @@ const sampleProfile: ProfileInput = {
   bodyFatPct: 26.5,
   waistCm: 102,
   hipCm: null,
-  goal: "减脂",
   targetBodyFatPct: 20,
   dailyEnergyDeficitKcal: 600,
   dietExercisePreference: "吃动平衡派",
@@ -71,8 +71,38 @@ test("SQLite 只保留一个画像，并支持空或填写臀围", () => {
     assert.equal(stored?.weightKg, 80);
     assert.equal(stored?.hipCm, 98);
     assert.deepEqual(stored?.trainingDays, ["一", "三", "四", "六"]);
+    const columns = repository.db.prepare("PRAGMA table_info(profile)").all().map((column) => column.name);
+    assert.equal(columns.includes("goal"), false);
   } finally {
     repository.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("当前版画像移除目标字段时保留画像和每日记录", () => {
+  const directory = mkdtempSync(join(tmpdir(), "fatloss-goal-migration-"));
+  const path = join(directory, "profile.sqlite");
+  const original = new ProfileRepository(path);
+  const stored = original.save(sampleProfile);
+  original.db.prepare(`
+    INSERT INTO daily_records (
+      log_date, bmr_kcal_snapshot, tdee_kcal_snapshot, intake_target_kcal_snapshot, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run("2026-09-21", 1700, 2200, 1600, stored.updatedAt, stored.updatedAt);
+  original.close();
+
+  const legacy = new DatabaseSync(path);
+  legacy.exec("ALTER TABLE profile ADD COLUMN goal TEXT NOT NULL DEFAULT '保持体型'");
+  legacy.close();
+
+  const migrated = new ProfileRepository(path);
+  try {
+    assert.deepEqual(migrated.get(), stored);
+    const columns = migrated.db.prepare("PRAGMA table_info(profile)").all().map((column) => column.name);
+    assert.equal(columns.includes("goal"), false);
+    assert.equal(migrated.db.prepare("SELECT bmr_kcal_snapshot FROM daily_records WHERE log_date = ?").get("2026-09-21")?.bmr_kcal_snapshot, 1700);
+  } finally {
+    migrated.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });
@@ -98,12 +128,17 @@ test("在首个问题取消建档时不会调用保存函数", async () => {
 
 test("TUI 活动选项与 Web 后端定义一致，选中只保存枚举值", async () => {
   const inputs = ["30", "70", "175", "25", "85", "", "20", "500"];
-  const selections = ["男", "减脂", "吃动平衡派", "中度", "轻体力工作", "否", "不使用器械", "几乎没感觉", "全身", "一", "三", "五", "否"];
+  const selections = ["男", "吃动平衡派", "中度", "轻体力工作", "否", "不使用器械", "几乎没感觉", "全身", "一", "三", "五", "否"];
+  const titles: string[] = [];
   const context = {
     mode: "tui",
     ui: {
-      input: async () => inputs.shift(),
+      input: async (title: string) => {
+        titles.push(title);
+        return inputs.shift();
+      },
       select: async (title: string, options: string[]) => {
+        titles.push(title);
         if (title.includes("当前的活动水平")) {
           assert.deepEqual(options, profileFormDefinition.options.activityLevels.map((item) => `${item.value}（${item.description}）× ${item.factor}`));
         }
@@ -122,6 +157,9 @@ test("TUI 活动选项与 Web 后端定义一致，选中只保存枚举值", as
   });
   assert.equal(result?.activityLevel, "中度");
   assert.equal(result?.jobType, "轻体力工作");
+  assert.equal("goal" in (result ?? {}), false);
+  assert.equal(titles.some((title) => title.includes("计划目标")), false);
+  assert.equal(titles.some((title) => title.startsWith("减脂建档 · 11/11")), true);
   assert.equal(inputs.length, 0);
   assert.equal(selections.length, 0);
 });

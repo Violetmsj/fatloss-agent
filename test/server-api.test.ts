@@ -21,7 +21,6 @@ const validProfile: ProfileInput = {
   bodyFatPct: 25,
   waistCm: 90,
   hipCm: null,
-  goal: "减脂",
   targetBodyFatPct: 18,
   dailyEnergyDeficitKcal: 500,
   dietExercisePreference: "吃动平衡派",
@@ -67,6 +66,8 @@ test("画像预览不写库，确认后原子保存且原有画像可继续读�
         body: JSON.stringify(validProfile),
       });
       assert.equal(preview.status, 200);
+      const previewBody = await preview.json() as { profile: Record<string, unknown> };
+      assert.equal("goal" in previewBody.profile, false);
       assert.equal(profiles.get(), null);
 
       const save = await fetch(`${baseUrl}/api/profile`, {
@@ -75,7 +76,14 @@ test("画像预览不写库，确认后原子保存且原有画像可继续读�
         body: JSON.stringify(validProfile),
       });
       assert.equal(save.status, 200);
+      const saveBody = await save.json() as { profile: Record<string, unknown> };
+      assert.equal("goal" in saveBody.profile, false);
       assert.equal(profiles.get()?.age, 30);
+
+      const get = await fetch(`${baseUrl}/api/profile`);
+      const getBody = await get.json() as { profile: Record<string, unknown>; options: Record<string, unknown> };
+      assert.equal("goal" in getBody.profile, false);
+      assert.equal("goals" in getBody.options, false);
     });
     profiles.close();
 
@@ -113,6 +121,15 @@ test("画像 API 拒绝缺失字段、越界值和器械互斥冲突", async () 
         assert.equal(response.status, 400);
         assert.equal((await response.json() as { error: { code: string } }).error.code, "INVALID_PROFILE");
       }
+      const removedGoal = await fetch(`${baseUrl}/api/profile/preview`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...validProfile, goal: "减脂" }),
+      });
+      assert.equal(removedGoal.status, 400);
+      const error = await removedGoal.json() as { error: { code: string; message: string } };
+      assert.equal(error.error.code, "INVALID_PROFILE");
+      assert.match(error.error.message, /计划目标字段已移除/);
       assert.equal(profiles.get(), null);
     });
   } finally {

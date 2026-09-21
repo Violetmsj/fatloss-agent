@@ -1,8 +1,8 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { type Profile, type ProfileInput, type TrainingDay, ACTIVITY_LEVELS, ACTIVITY_LEVEL_DETAILS, DIET_EXERCISE_PREFERENCES, EQUIPMENT, EXERCISES, FOCUS_AREAS, GENDERS, GOALS, JOB_TYPES, STAIR_RESPONSES, TRAINING_DAYS, formatProfile } from "./profile.ts";
+import { type Profile, type ProfileInput, type TrainingDay, ACTIVITY_LEVELS, ACTIVITY_LEVEL_DETAILS, DIET_EXERCISE_PREFERENCES, EQUIPMENT, EXERCISES, FOCUS_AREAS, GENDERS, JOB_TYPES, STAIR_RESPONSES, TRAINING_DAYS, formatProfile } from "./profile.ts";
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 11;
 // 仅用于 TUI 展示；入库仍保存简洁的“轻/中/重体力工作”枚举值，避免把说明文案混入画像数据。
 const JOB_TYPE_EXAMPLES: Record<(typeof JOB_TYPES)[number], string> = {
   轻体力工作: "如办公室职员、售货员、简单家务等工作",
@@ -22,7 +22,7 @@ async function choose<T extends string>(ctx: ExtensionContext, step: number, que
 
 async function chooseJobType(ctx: ExtensionContext) {
   const labels = JOB_TYPES.map((jobType) => `${jobType}（${JOB_TYPE_EXAMPLES[jobType]}）`);
-  const selectedLabel = await ctx.ui.select(title(8, "您目前从事的工作类型是？"), labels);
+  const selectedLabel = await ctx.ui.select(title(7, "您目前从事的工作类型是？"), labels);
   const index = selectedLabel === undefined ? -1 : labels.indexOf(selectedLabel);
   return index === -1 ? null : JOB_TYPES[index];
 }
@@ -119,29 +119,27 @@ async function collectProfile(ctx: ExtensionContext): Promise<ProfileInput | nul
       `性别：${gender}\n年龄：${age} 岁\n身高：${heightCm} cm\n体重：${weightKg} kg\n体脂率：${bodyFatPct}%\n腰围：${waistCm} cm${hipCm === null ? "" : `\n臀围：${hipCm} cm`}`,
     );
     if (confirmed) {
-      const goal = await choose(ctx, 3, "您的计划目标是？", GOALS);
-      if (!goal) return null;
-      const targetBodyFatPct = await readNumber(ctx, 4, "请设置目标脂肪率", `1-${bodyFatPct}%`, 1, bodyFatPct);
+      const targetBodyFatPct = await readNumber(ctx, 3, "请设置目标脂肪率", `1-${bodyFatPct}%`, 1, bodyFatPct);
       if (targetBodyFatPct === undefined || targetBodyFatPct === null) return null;
-      const dailyEnergyDeficitKcal = await readNumber(ctx, 5, "请输入每日总能量缺口", "300-1000 千卡", 300, 1000, true);
+      const dailyEnergyDeficitKcal = await readNumber(ctx, 4, "请输入每日总能量缺口", "300-1000 千卡", 300, 1000, true);
       if (dailyEnergyDeficitKcal === undefined || dailyEnergyDeficitKcal === null) return null;
-      const dietExercisePreference = await choose(ctx, 6, "您希望的运动饮食比例是？", DIET_EXERCISE_PREFERENCES);
+      const dietExercisePreference = await choose(ctx, 5, "您希望的运动饮食比例是？", DIET_EXERCISE_PREFERENCES);
       if (!dietExercisePreference) return null;
       const activityLabels = ACTIVITY_LEVELS.map((value) => `${value}（${ACTIVITY_LEVEL_DETAILS[value].description}）× ${ACTIVITY_LEVEL_DETAILS[value].factor}`);
-      const selectedActivity = await choose(ctx, 7, "您当前的活动水平是？（不是未来计划的训练频次）", activityLabels);
+      const selectedActivity = await choose(ctx, 6, "您当前的活动水平是？（不是未来计划的训练频次）", activityLabels);
       if (!selectedActivity) return null;
       const activityLevel = ACTIVITY_LEVELS[activityLabels.indexOf(selectedActivity)]!;
       const jobType = await chooseJobType(ctx);
       if (!jobType) return null;
-      const favoriteExercises = await chooseMultiple(ctx, 9, "您喜欢以哪种方式运动？（最多 2 种）", EXERCISES, 0, 2);
+      const favoriteExercises = await chooseMultiple(ctx, 8, "您喜欢以哪种方式运动？（最多 2 种）", EXERCISES, 0, 2);
       if (!favoriteExercises) return null;
-      const equipment = await chooseMultiple(ctx, 10, "您希望在计划中使用哪些运动器械？", EQUIPMENT, 1, EQUIPMENT.length, "不使用器械");
+      const equipment = await chooseMultiple(ctx, 9, "您希望在计划中使用哪些运动器械？", EQUIPMENT, 1, EQUIPMENT.length, "不使用器械");
       if (!equipment) return null;
-      const stairResponse = await choose(ctx, 11, "连续上五层楼后，是否会感觉呼吸局促？", STAIR_RESPONSES);
+      const stairResponse = await choose(ctx, 10, "连续上五层楼后，是否会感觉呼吸局促？", STAIR_RESPONSES);
       if (!stairResponse) return null;
-      const focusArea = await choose(ctx, 11, "您希望重点改善哪些部位？", FOCUS_AREAS);
+      const focusArea = await choose(ctx, 10, "您希望重点改善哪些部位？", FOCUS_AREAS);
       if (!focusArea) return null;
-      const trainingDays = await chooseMultiple(ctx, 12, "您每周的训练时间是？（请选择 3-7 天）", TRAINING_DAYS, 3, 7);
+      const trainingDays = await chooseMultiple(ctx, 11, "您每周的训练时间是？（请选择 3-7 天）", TRAINING_DAYS, 3, 7);
       if (!trainingDays) return null;
 
       return {
@@ -152,7 +150,6 @@ async function collectProfile(ctx: ExtensionContext): Promise<ProfileInput | nul
         bodyFatPct,
         waistCm,
         hipCm,
-        goal,
         targetBodyFatPct,
         dailyEnergyDeficitKcal,
         dietExercisePreference,

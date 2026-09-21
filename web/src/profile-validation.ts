@@ -25,7 +25,7 @@ export function validateProfileForm(input: ProfileInput, definition: ProfileForm
         errors.targetBodyFatPct = `目标体脂率需在 ${target.minimum}% 到当前体脂率之间`;
     }
     const required: Array<[keyof ProfileInput, string]> = [
-        ["gender", "请选择性别"], ["goal", "请选择计划目标"], ["dietExercisePreference", "请选择吃动偏好"],
+        ["gender", "请选择性别"], ["dietExercisePreference", "请选择吃动偏好"],
         ["activityLevel", "请选择活动水平"], ["jobType", "请选择工作类型"], ["stairResponse", "请选择爬楼反应"], ["focusArea", "请选择重点部位"],
     ];
     for (const [field, message] of required) if (!input[field]) errors[field] = message;

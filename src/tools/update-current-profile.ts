@@ -2,7 +2,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 import { ProfileNotFoundError, ProfileRepository, ProfileStorageError, ProfileUpdateValidationError } from "../database.ts";
-import { ACTIVITY_LEVELS, DIET_EXERCISE_PREFERENCES, EQUIPMENT, EXERCISES, FOCUS_AREAS, GENDERS, GOALS, JOB_TYPES, STAIR_RESPONSES, TRAINING_DAYS, type ProfileInput } from "../profile.ts";
+import { ACTIVITY_LEVELS, DIET_EXERCISE_PREFERENCES, EQUIPMENT, EXERCISES, FOCUS_AREAS, GENDERS, JOB_TYPES, STAIR_RESPONSES, TRAINING_DAYS, type ProfileInput } from "../profile.ts";
 
 const literals = <T extends readonly string[]>(values: T) => Type.Union(values.map((value) => Type.Literal(value)));
 
@@ -14,7 +14,6 @@ const fieldLabels: Record<keyof ProfileInput, string> = {
   bodyFatPct: "当前体脂率（%）",
   waistCm: "腰围（cm）",
   hipCm: "臀围（cm）",
-  goal: "计划目标",
   targetBodyFatPct: "目标体脂率（%）",
   dailyEnergyDeficitKcal: "每日总能量缺口（千卡）",
   dietExercisePreference: "吃动偏好",
@@ -49,7 +48,6 @@ export function createUpdateCurrentProfileTool(repository: ProfileRepository) {
       bodyFatPct: Type.Optional(Type.Number({ minimum: 1, maximum: 70 })),
       waistCm: Type.Optional(Type.Number({ minimum: 30, maximum: 250 })),
       hipCm: Type.Optional(Type.Union([Type.Number({ minimum: 30, maximum: 250 }), Type.Null()])),
-      goal: Type.Optional(literals(GOALS)),
       targetBodyFatPct: Type.Optional(Type.Number({ minimum: 1, maximum: 70 })),
       dailyEnergyDeficitKcal: Type.Optional(Type.Integer({ minimum: 300, maximum: 1000 })),
       dietExercisePreference: Type.Optional(literals(DIET_EXERCISE_PREFERENCES)),

@@ -17,7 +17,6 @@ const sampleProfile: ProfileInput = {
   bodyFatPct: 26.5,
   waistCm: 102,
   hipCm: null,
-  goal: "减脂",
   targetBodyFatPct: 20,
   dailyEnergyDeficitKcal: 600,
   dietExercisePreference: "吃动平衡派",
