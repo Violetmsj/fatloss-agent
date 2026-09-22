@@ -11,6 +11,7 @@ import {
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
 import { unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { HttpError } from "./errors.ts";
 import { createWebExtensionUI, type WebNotification } from "./extension-ui.ts";
@@ -45,6 +46,14 @@ export interface ConversationSessionRegistryOptions {
   idleTimeoutMs?: number;
   provider?: string;
   modelId?: string;
+}
+
+export function createWebResourceLoaderOptions(cwd: string) {
+  return {
+    // noExtensions 只关闭自动发现；显式路径仍会加载，从而把 Web 与个人 TUI 插件彻底隔离。
+    noExtensions: true,
+    additionalExtensionPaths: [join(cwd, ".pi/extensions/fatloss-agent.ts")],
+  };
 }
 
 /**
@@ -204,7 +213,13 @@ export class ConversationSessionRegistry {
     const notificationListeners = new Set<(notification: WebNotification) => void>();
     const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
       // ModelRuntime 由整个服务共享，具体 AgentSession 仍按会话独立创建。
-      const services = await createAgentSessionServices({ cwd, agentDir: this.agentDir, modelRuntime: this.options.modelRuntime });
+      const services = await createAgentSessionServices({
+        cwd,
+        agentDir: this.agentDir,
+        modelRuntime: this.options.modelRuntime,
+        // Web 的 UI 适配器没有终端 Theme/Widget，不能加载依赖 TUI 的用户级扩展。
+        resourceLoaderOptions: createWebResourceLoaderOptions(cwd),
+      });
       const model = services.modelRuntime.getModel(this.provider, this.modelId);
       const created = await createAgentSessionFromServices({
         services,

@@ -55,3 +55,37 @@ test("每日记录工具可完成饮食和运动 CRUD，并由 schema 强制删�
     await call("delete_daily_record", { logDate: "2026-09-21", confirmed: true });
     assert.equal((await call("get_daily_record", { logDate: "2026-09-21" })).details, null);
 });
+
+test("新增记录允许省略全部可空字段并统一保存为 null", async (t) => {
+    const directory = mkdtempSync(join(tmpdir(), "fatloss-daily-minimal-tools-"));
+    const repository = new ProfileRepository(join(directory, "test.sqlite"));
+    t.after(() => { repository.close(); rmSync(directory, { recursive: true, force: true }); });
+    repository.save(profile);
+    const tools = new Map(createDailyRecordTools(repository).map((tool) => [tool.name, tool]));
+    const foodTool = tools.get("add_food_entry")!;
+    const exerciseTool = tools.get("add_exercise_entry")!;
+    const foodInput = { logDate: "2026-09-22", mealType: "早餐", foodName: "韭菜鸡蛋包子", caloriesKcal: 260 };
+    const exerciseInput = { logDate: "2026-09-22", exerciseName: "快走", durationMinutes: 30, caloriesBurnedKcal: 120 };
+
+    assert.equal(Value.Check(foodTool.parameters, foodInput), true);
+    assert.equal(Value.Check(exerciseTool.parameters, exerciseInput), true);
+    assert.equal(Value.Check(foodTool.parameters, { ...foodInput, amount: 1 }), true);
+
+    const food = (await foodTool.execute("food", foodInput as never, undefined, undefined, {} as never) as { details: Record<string, unknown> }).details;
+    const exercise = (await exerciseTool.execute("exercise", exerciseInput as never, undefined, undefined, {} as never) as { details: Record<string, unknown> }).details;
+    assert.equal(food.note, null);
+    assert.equal(food.amount, null);
+    assert.equal(food.calorieSourceType, null);
+    assert.equal(exercise.intensity, null);
+    assert.equal(exercise.metValue, null);
+    assert.equal(exercise.reportedCalorieBasis, null);
+
+    await assert.rejects(
+        () => foodTool.execute("invalid", { ...foodInput, amount: 1 } as never, undefined, undefined, {} as never),
+        /食物数量和单位必须同时填写或同时留空/,
+    );
+    await assert.rejects(
+        () => foodTool.execute("invalid", { ...foodInput, unit: "个" } as never, undefined, undefined, {} as never),
+        /食物数量和单位必须同时填写或同时留空/,
+    );
+});
