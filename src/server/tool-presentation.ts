@@ -9,6 +9,18 @@ const TOOL_TITLES: Record<string, string> = {
   update_memory: "更新长期记忆",
   invalidate_memory: "失效长期记忆",
   delete_memory: "删除长期记忆",
+  ask_user: "补充记录信息",
+  estimate_food_nutrition: "估算食物营养",
+  estimate_exercise_calories: "估算运动消耗",
+  get_daily_record: "读取每日记录",
+  list_daily_records: "查询每日记录",
+  add_food_entry: "新增饮食记录",
+  update_food_entry: "修改饮食记录",
+  delete_food_entry: "删除饮食记录",
+  add_exercise_entry: "新增运动记录",
+  update_exercise_entry: "修改运动记录",
+  delete_exercise_entry: "删除运动记录",
+  delete_daily_record: "删除整日记录",
 };
 
 /** 把内部工具名转换成用户可理解的中文卡片标题。 */
@@ -21,6 +33,31 @@ export function presentToolInput(toolName: string, args: unknown): unknown {
   const input = args as Record<string, unknown>;
   if (toolName === "search_fatloss_knowledge") return { 问题: input.question ?? input.query ?? "减脂知识" };
   if (toolName === "update_current_profile") return { 更新字段: Object.keys(input) };
+  if (toolName === "ask_user") {
+    const questions = Array.isArray(input.questions) ? input.questions.slice(0, 3).map((value) => {
+      if (!value || typeof value !== "object") return null;
+      const question = value as Record<string, unknown>;
+      return {
+        id: typeof question.id === "string" ? question.id : "question",
+        label: typeof question.label === "string" ? question.label : undefined,
+        prompt: typeof question.prompt === "string" ? question.prompt : "请补充信息",
+        allowOther: question.allowOther !== false,
+        options: Array.isArray(question.options) ? question.options.slice(0, 8).flatMap((option) => {
+          if (!option || typeof option !== "object") return [];
+          const item = option as Record<string, unknown>;
+          if (typeof item.value !== "string" || typeof item.label !== "string") return [];
+          return [{ value: item.value, label: item.label, description: typeof item.description === "string" ? item.description : undefined }];
+        }) : [],
+      };
+    }).filter(Boolean) : [];
+    return { questions };
+  }
+  if (toolName.startsWith("estimate_")) return { 描述: input.foodDescription ?? input.exerciseDescription, 分量克数: input.grams, 运动时长分钟: input.durationMinutes };
+  if (toolName === "get_daily_record") return { 日期: input.logDate };
+  if (toolName === "list_daily_records") return { 开始日期: input.fromDate, 结束日期: input.toDate };
+  if (toolName.includes("food_entry")) return { 日期: input.logDate, 记录ID: input.id, 食物: input.foodName, 餐次: input.mealType };
+  if (toolName.includes("exercise_entry")) return { 日期: input.logDate, 记录ID: input.id, 运动: input.exerciseName, 时长分钟: input.durationMinutes };
+  if (toolName === "delete_daily_record") return { 日期: input.logDate };
   // 记忆证据可能含用户原话，Web 只展示操作名称，不平铺完整参数。
   if (toolName.includes("memory") || toolName.includes("remember") || toolName.includes("forget")) {
     return { 操作: getToolTitle(toolName) };
@@ -29,6 +66,7 @@ export function presentToolInput(toolName: string, args: unknown): unknown {
 }
 
 export function presentToolOutput(toolName: string): { summary: string } {
+  if (toolName === "ask_user") return { summary: "等待用户回答问卷" };
   return { summary: `${getToolTitle(toolName)}完成` };
 }
 

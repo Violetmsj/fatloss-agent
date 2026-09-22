@@ -3,6 +3,7 @@ node_modules/
 data/*.sqlite
 data/*.sqlite-*
 data/chroma/
+data/reference/
 .env
 dist/
 web/dist/

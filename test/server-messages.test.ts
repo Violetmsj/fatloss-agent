@@ -44,6 +44,22 @@ test("历史转换恢复用户图片为可展示的 Data URL", () => {
   ]);
 });
 
+test("历史转换保留问卷结构但不泄露工具原始结果", () => {
+  const entries = [
+    { type: "message", id: "a-question", parentId: null, timestamp: "2026-01-01", message: { role: "assistant", content: [
+      { type: "toolCall", id: "ask-1", name: "ask_user", arguments: { questions: [{ id: "meal", prompt: "是哪一餐？", options: [{ value: "lunch", label: "午餐" }] }] } },
+    ] } },
+    { type: "message", id: "t-question", parentId: "a-question", timestamp: "2026-01-01", message: { role: "toolResult", toolCallId: "ask-1", toolName: "ask_user", content: [{ type: "text", text: "内部问卷结果" }], isError: false } },
+  ] as unknown as SessionEntry[];
+  const messages = sessionEntriesToUIMessages(entries);
+  const tool = messages[0]?.parts[0];
+  assert.equal(tool?.type, "dynamic-tool");
+  if (tool?.type !== "dynamic-tool") return;
+  assert.equal(tool.toolName, "ask_user");
+  assert.deepEqual(tool.input, { questions: [{ id: "meal", label: undefined, prompt: "是哪一餐？", allowOther: true, options: [{ value: "lunch", label: "午餐", description: undefined }] }] });
+  assert.equal(JSON.stringify(tool).includes("内部问卷结果"), false);
+});
+
 test("只读取请求中的最后一条用户文本", () => {
   assert.equal(getLastUserText([
     { role: "user", parts: [{ type: "text", text: "旧消息" }] },

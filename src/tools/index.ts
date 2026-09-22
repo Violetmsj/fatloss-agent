@@ -7,12 +7,19 @@ import { createSearchFatlossKnowledgeTool } from "./search-fatloss-knowledge.ts"
 import { createUpdateCurrentProfileTool } from "./update-current-profile.ts";
 import { createMemoryTools } from "./memories.ts";
 import { createCalculateEnergyNeedsTool } from "./calculate-energy-needs.ts";
+import { createAskUserTool } from "./ask-user.ts";
+import { createDailyRecordTools } from "./daily-records.ts";
+import { createEstimationTools, type EstimationToolDependencies } from "./estimate-calories.ts";
 
 /**
  * Agent 的模型工具统一在此处汇总。
  * 新增工具时只需在此创建并加入数组，扩展会自动注册并加入工具白名单。
  */
-export function createFatlossTools(repository: ProfileRepository, memories = new MemoryStore(repository.db)) {
+export function createFatlossTools(repository: ProfileRepository, memories = new MemoryStore(repository.db), estimationDependencies: EstimationToolDependencies = {}) {
   // 工具清单统一交给扩展注册和加入白名单，避免实现了工具却没有对模型开放。
-  return [createGetCurrentTimeTool(), createGetCurrentProfileTool(repository), createCalculateEnergyNeedsTool(repository), createUpdateCurrentProfileTool(repository), createSearchFatlossKnowledgeTool(), ...createMemoryTools(memories)];
+  return [
+    createGetCurrentTimeTool(), createGetCurrentProfileTool(repository), createCalculateEnergyNeedsTool(repository),
+    createUpdateCurrentProfileTool(repository), createSearchFatlossKnowledgeTool(), createAskUserTool(),
+    ...createEstimationTools(repository, estimationDependencies), ...createDailyRecordTools(repository), ...createMemoryTools(memories),
+  ];
 }

@@ -2,6 +2,36 @@ export const MEAL_TYPES = ["早餐", "午餐", "晚餐", "加餐"] as const;
 
 export type MealType = (typeof MEAL_TYPES)[number];
 
+export const CALORIE_CONFIDENCES = ["low", "medium", "high"] as const;
+export type CalorieConfidence = (typeof CALORIE_CONFIDENCES)[number];
+
+export const FOOD_CALORIE_SOURCE_TYPES = ["user_provided", "nutrition_label", "local_food_database", "web_estimate"] as const;
+export type FoodCalorieSourceType = (typeof FOOD_CALORIE_SOURCE_TYPES)[number];
+
+export const EXERCISE_CALORIE_SOURCE_TYPES = ["wearable", "met_formula", "user_provided"] as const;
+export type ExerciseCalorieSourceType = (typeof EXERCISE_CALORIE_SOURCE_TYPES)[number];
+
+export const REPORTED_CALORIE_BASES = ["active", "total", "unknown"] as const;
+export type ReportedCalorieBasis = (typeof REPORTED_CALORIE_BASES)[number];
+
+export interface CalorieProvenanceInput<TSource extends string> {
+    calorieSourceType?: TSource | null;
+    calorieSourceRef?: string | null;
+    calorieEstimateLowKcal?: number | null;
+    calorieEstimateHighKcal?: number | null;
+    calorieConfidence?: CalorieConfidence | null;
+    calorieEstimationNote?: string | null;
+}
+
+export interface CalorieProvenance<TSource extends string> {
+    calorieSourceType: TSource | null;
+    calorieSourceRef: string | null;
+    calorieEstimateLowKcal: number | null;
+    calorieEstimateHighKcal: number | null;
+    calorieConfidence: CalorieConfidence | null;
+    calorieEstimationNote: string | null;
+}
+
 export interface DailyRecord {
     id: number;
     logDate: string;
@@ -12,7 +42,7 @@ export interface DailyRecord {
     updatedAt: string;
 }
 
-export interface FoodEntryInput {
+export interface FoodEntryInput extends CalorieProvenanceInput<FoodCalorieSourceType> {
     mealType: MealType;
     foodName: string;
     amount: number | null;
@@ -26,14 +56,14 @@ export interface FoodEntryInput {
     note: string | null;
 }
 
-export interface FoodEntry extends FoodEntryInput {
+export interface FoodEntry extends Omit<FoodEntryInput, keyof CalorieProvenanceInput<FoodCalorieSourceType>>, CalorieProvenance<FoodCalorieSourceType> {
     id: number;
     dailyRecordId: number;
     createdAt: string;
     updatedAt: string;
 }
 
-export interface ExerciseEntryInput {
+export interface ExerciseEntryInput extends CalorieProvenanceInput<ExerciseCalorieSourceType> {
     exerciseName: string;
     durationMinutes: number;
     caloriesBurnedKcal: number;
@@ -41,11 +71,17 @@ export interface ExerciseEntryInput {
     startedAt: string | null;
     distanceKm: number | null;
     note: string | null;
+    metValue?: number | null;
+    reportedCaloriesKcal?: number | null;
+    reportedCalorieBasis?: ReportedCalorieBasis | null;
 }
 
-export interface ExerciseEntry extends ExerciseEntryInput {
+export interface ExerciseEntry extends Omit<ExerciseEntryInput, keyof CalorieProvenanceInput<ExerciseCalorieSourceType> | "metValue" | "reportedCaloriesKcal" | "reportedCalorieBasis">, CalorieProvenance<ExerciseCalorieSourceType> {
     id: number;
     dailyRecordId: number;
+    metValue: number | null;
+    reportedCaloriesKcal: number | null;
+    reportedCalorieBasis: ReportedCalorieBasis | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -109,6 +145,35 @@ function validateOptionalNumber(name: string, value: number | null, minimum: num
     if (value !== null) validateNumber(name, value, minimum, allowMinimum);
 }
 
+function normalizeProvenance<TSource extends string>(
+    input: CalorieProvenanceInput<TSource>,
+    caloriesKcal: number,
+    sourceTypes: readonly TSource[],
+): CalorieProvenance<TSource> {
+    // 区间是一个不可拆分的整体；禁止只保存一侧，或让中心值落在区间之外。
+    // 这层校验也覆盖从旧表迁移来的数据库，因为旧表新增列无法补上完整 CHECK 约束。
+    const low = input.calorieEstimateLowKcal ?? null;
+    const high = input.calorieEstimateHighKcal ?? null;
+    if ((low === null) !== (high === null)) throw new Error("热量估算区间上下界必须同时填写或同时留空");
+    if (low !== null && high !== null) {
+        validateNumber("热量估算下界", low, 0, true);
+        validateNumber("热量估算上界", high, 0, true);
+        if (low > caloriesKcal || caloriesKcal > high) throw new Error("热量估算必须满足下界 ≤ 热量 ≤ 上界");
+    }
+    const sourceType = input.calorieSourceType ?? null;
+    if (sourceType !== null && !sourceTypes.includes(sourceType)) throw new Error("热量来源类型无效");
+    const confidence = input.calorieConfidence ?? null;
+    if (confidence !== null && !CALORIE_CONFIDENCES.includes(confidence)) throw new Error("热量置信度无效");
+    return {
+        calorieSourceType: sourceType,
+        calorieSourceRef: normalizeOptionalText(input.calorieSourceRef ?? null),
+        calorieEstimateLowKcal: low,
+        calorieEstimateHighKcal: high,
+        calorieConfidence: confidence,
+        calorieEstimationNote: normalizeOptionalText(input.calorieEstimationNote ?? null),
+    };
+}
+
 export function normalizeFoodInput(input: FoodEntryInput): FoodEntryInput {
     if (!isMealType(input.mealType)) throw new Error("餐次必须是早餐、午餐、晚餐或加餐");
     if ((input.amount === null) !== (input.unit === null)) throw new Error("食物数量和单位必须同时填写或同时留空");
@@ -121,6 +186,7 @@ export function normalizeFoodInput(input: FoodEntryInput): FoodEntryInput {
     validateOptionalIsoTime("进食时间", input.eatenAt);
     return {
         ...input,
+        ...normalizeProvenance(input, input.caloriesKcal, FOOD_CALORIE_SOURCE_TYPES),
         foodName: validateText("食物名称", input.foodName),
         unit: input.unit === null ? null : validateText("食物单位", input.unit),
         note: normalizeOptionalText(input.note),
@@ -131,11 +197,20 @@ export function normalizeExerciseInput(input: ExerciseEntryInput): ExerciseEntry
     validateNumber("运动时长", input.durationMinutes, 0, false);
     validateNumber("运动消耗", input.caloriesBurnedKcal, 0, true);
     validateOptionalNumber("运动距离", input.distanceKm, 0, false);
+    validateOptionalNumber("MET", input.metValue ?? null, 1, true);
+    validateOptionalNumber("设备报告热量", input.reportedCaloriesKcal ?? null, 0, true);
+    // reportedCaloriesKcal 保留设备原始读数，caloriesBurnedKcal 才是统一后的活动热量。
+    const reportedCalorieBasis = input.reportedCalorieBasis ?? null;
+    if (reportedCalorieBasis !== null && !REPORTED_CALORIE_BASES.includes(reportedCalorieBasis)) throw new Error("设备热量口径无效");
     validateOptionalIsoTime("运动开始时间", input.startedAt);
     return {
         ...input,
+        ...normalizeProvenance(input, input.caloriesBurnedKcal, EXERCISE_CALORIE_SOURCE_TYPES),
         exerciseName: validateText("运动名称", input.exerciseName),
         intensity: normalizeOptionalText(input.intensity),
         note: normalizeOptionalText(input.note),
+        metValue: input.metValue ?? null,
+        reportedCaloriesKcal: input.reportedCaloriesKcal ?? null,
+        reportedCalorieBasis,
     };
 }

@@ -35,6 +35,12 @@ test("当前时间工具加入统一白名单并使用简洁 Web 展示", (t) =>
   t.after(() => { repository.close(); rmSync(directory, { recursive: true, force: true }); });
 
   assert.ok(createFatlossTools(repository).some((tool) => tool.name === "get_current_time"));
+  const toolNames = new Set(createFatlossTools(repository).map((tool) => tool.name));
+  for (const name of [
+    "ask_user", "estimate_food_nutrition", "estimate_exercise_calories", "get_daily_record", "list_daily_records",
+    "add_food_entry", "update_food_entry", "delete_food_entry", "add_exercise_entry", "update_exercise_entry",
+    "delete_exercise_entry", "delete_daily_record",
+  ]) assert.ok(toolNames.has(name), `${name} 应加入统一工具白名单`);
   assert.equal(getToolTitle("get_current_time"), "获取当前时间");
   assert.deepEqual(presentToolInput("get_current_time", {}), {});
   assert.deepEqual(presentToolOutput("get_current_time"), { summary: "获取当前时间完成" });

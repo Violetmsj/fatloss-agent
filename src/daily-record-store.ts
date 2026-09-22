@@ -7,11 +7,15 @@ import {
     type DailyRecord,
     type DailyRecordDetails,
     type DailyRecordSummary,
+    type CalorieConfidence,
+    type ExerciseCalorieSourceType,
     type ExerciseEntry,
     type ExerciseEntryInput,
     type FoodEntry,
     type FoodEntryInput,
+    type FoodCalorieSourceType,
     type MealType,
+    type ReportedCalorieBasis,
 } from "./daily-record.ts";
 import { calculateEnergyNeeds } from "./energy-calculation.ts";
 import type { Profile } from "./profile.ts";
@@ -43,6 +47,12 @@ interface FoodEntryRow {
     fiber_g: number | null;
     eaten_at: string | null;
     note: string | null;
+    calorie_source_type: FoodCalorieSourceType | null;
+    calorie_source_ref: string | null;
+    calorie_estimate_low_kcal: number | null;
+    calorie_estimate_high_kcal: number | null;
+    calorie_confidence: CalorieConfidence | null;
+    calorie_estimation_note: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -57,6 +67,15 @@ interface ExerciseEntryRow {
     started_at: string | null;
     distance_km: number | null;
     note: string | null;
+    calorie_source_type: ExerciseCalorieSourceType | null;
+    calorie_source_ref: string | null;
+    calorie_estimate_low_kcal: number | null;
+    calorie_estimate_high_kcal: number | null;
+    calorie_confidence: CalorieConfidence | null;
+    calorie_estimation_note: string | null;
+    met_value: number | null;
+    reported_calories_kcal: number | null;
+    reported_calorie_basis: ReportedCalorieBasis | null;
     created_at: string;
     updated_at: string;
 }
@@ -85,9 +104,17 @@ const CREATE_DAILY_RECORD_TABLES = `
         fiber_g REAL CHECK (fiber_g IS NULL OR fiber_g >= 0),
         eaten_at TEXT,
         note TEXT,
+        calorie_source_type TEXT CHECK (calorie_source_type IS NULL OR calorie_source_type IN ('user_provided', 'nutrition_label', 'local_food_database', 'web_estimate')),
+        calorie_source_ref TEXT,
+        calorie_estimate_low_kcal REAL CHECK (calorie_estimate_low_kcal IS NULL OR calorie_estimate_low_kcal >= 0),
+        calorie_estimate_high_kcal REAL CHECK (calorie_estimate_high_kcal IS NULL OR calorie_estimate_high_kcal >= 0),
+        calorie_confidence TEXT CHECK (calorie_confidence IS NULL OR calorie_confidence IN ('low', 'medium', 'high')),
+        calorie_estimation_note TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        CHECK ((amount IS NULL AND unit IS NULL) OR (amount IS NOT NULL AND unit IS NOT NULL))
+        CHECK ((amount IS NULL AND unit IS NULL) OR (amount IS NOT NULL AND unit IS NOT NULL)),
+        CHECK ((calorie_estimate_low_kcal IS NULL AND calorie_estimate_high_kcal IS NULL) OR
+            (calorie_estimate_low_kcal >= 0 AND calorie_estimate_low_kcal <= calories_kcal AND calories_kcal <= calorie_estimate_high_kcal))
     );
     CREATE TABLE IF NOT EXISTS exercise_entries (
         id INTEGER PRIMARY KEY,
@@ -99,15 +126,46 @@ const CREATE_DAILY_RECORD_TABLES = `
         started_at TEXT,
         distance_km REAL CHECK (distance_km IS NULL OR distance_km > 0),
         note TEXT,
+        calorie_source_type TEXT CHECK (calorie_source_type IS NULL OR calorie_source_type IN ('wearable', 'met_formula', 'user_provided')),
+        calorie_source_ref TEXT,
+        calorie_estimate_low_kcal REAL CHECK (calorie_estimate_low_kcal IS NULL OR calorie_estimate_low_kcal >= 0),
+        calorie_estimate_high_kcal REAL CHECK (calorie_estimate_high_kcal IS NULL OR calorie_estimate_high_kcal >= 0),
+        calorie_confidence TEXT CHECK (calorie_confidence IS NULL OR calorie_confidence IN ('low', 'medium', 'high')),
+        calorie_estimation_note TEXT,
+        met_value REAL CHECK (met_value IS NULL OR met_value >= 1),
+        reported_calories_kcal REAL CHECK (reported_calories_kcal IS NULL OR reported_calories_kcal >= 0),
+        reported_calorie_basis TEXT CHECK (reported_calorie_basis IS NULL OR reported_calorie_basis IN ('active', 'total', 'unknown')),
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        CHECK ((calorie_estimate_low_kcal IS NULL AND calorie_estimate_high_kcal IS NULL) OR
+            (calorie_estimate_low_kcal >= 0 AND calorie_estimate_low_kcal <= calories_burned_kcal AND calories_burned_kcal <= calorie_estimate_high_kcal))
     );
     CREATE INDEX IF NOT EXISTS food_entries_daily_meal ON food_entries(daily_record_id, meal_type);
     CREATE INDEX IF NOT EXISTS exercise_entries_daily ON exercise_entries(daily_record_id);
 `;
 
 export function initializeDailyRecordSchema(db: DatabaseSync): void {
+    // 新库直接使用完整定义；旧库则只增量补列，不重建表，也不触碰已有记录。
     db.exec(CREATE_DAILY_RECORD_TABLES);
+    addMissingColumns(db, "food_entries", [
+        ["calorie_source_type", "TEXT"], ["calorie_source_ref", "TEXT"],
+        ["calorie_estimate_low_kcal", "REAL"], ["calorie_estimate_high_kcal", "REAL"],
+        ["calorie_confidence", "TEXT"], ["calorie_estimation_note", "TEXT"],
+    ]);
+    addMissingColumns(db, "exercise_entries", [
+        ["calorie_source_type", "TEXT"], ["calorie_source_ref", "TEXT"],
+        ["calorie_estimate_low_kcal", "REAL"], ["calorie_estimate_high_kcal", "REAL"],
+        ["calorie_confidence", "TEXT"], ["calorie_estimation_note", "TEXT"],
+        ["met_value", "REAL"], ["reported_calories_kcal", "REAL"], ["reported_calorie_basis", "TEXT"],
+    ]);
+}
+
+function addMissingColumns(db: DatabaseSync, table: string, columns: [string, string][]): void {
+    // SQLite 没有通用的 ADD COLUMN IF NOT EXISTS，先读取表结构保证重复初始化安全。
+    const existing = new Set((db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((column) => column.name));
+    for (const [name, definition] of columns) {
+        if (!existing.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+    }
 }
 
 function fromDailyRow(row: DailyRecordRow): DailyRecord {
@@ -137,6 +195,12 @@ function fromFoodRow(row: FoodEntryRow): FoodEntry {
         fiberG: row.fiber_g,
         eatenAt: row.eaten_at,
         note: row.note,
+        calorieSourceType: row.calorie_source_type,
+        calorieSourceRef: row.calorie_source_ref,
+        calorieEstimateLowKcal: row.calorie_estimate_low_kcal,
+        calorieEstimateHighKcal: row.calorie_estimate_high_kcal,
+        calorieConfidence: row.calorie_confidence,
+        calorieEstimationNote: row.calorie_estimation_note,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
     };
@@ -153,6 +217,15 @@ function fromExerciseRow(row: ExerciseEntryRow): ExerciseEntry {
         startedAt: row.started_at,
         distanceKm: row.distance_km,
         note: row.note,
+        calorieSourceType: row.calorie_source_type,
+        calorieSourceRef: row.calorie_source_ref,
+        calorieEstimateLowKcal: row.calorie_estimate_low_kcal,
+        calorieEstimateHighKcal: row.calorie_estimate_high_kcal,
+        calorieConfidence: row.calorie_confidence,
+        calorieEstimationNote: row.calorie_estimation_note,
+        metValue: row.met_value,
+        reportedCaloriesKcal: row.reported_calories_kcal,
+        reportedCalorieBasis: row.reported_calorie_basis,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
     };
@@ -188,6 +261,7 @@ export class DailyRecordStore {
     private ensureDailyRecord(logDate: string, profile: Profile, now: string): DailyRecord {
         const existing = this.dailyRowByDate(logDate);
         if (existing) return fromDailyRow(existing);
+        // BMR/TDEE/目标摄入只在当天首次出现时快照，之后画像更新不会改写历史口径。
         const energy = calculateEnergyNeeds(profile);
         this.db.prepare(`
             INSERT INTO daily_records (
@@ -229,11 +303,15 @@ export class DailyRecordStore {
                 INSERT INTO food_entries (
                     daily_record_id, meal_type, food_name, amount, unit, calories_kcal,
                     protein_g, carbs_g, fat_g, fiber_g, eaten_at, note, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    , calorie_source_type, calorie_source_ref, calorie_estimate_low_kcal, calorie_estimate_high_kcal,
+                    calorie_confidence, calorie_estimation_note
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
                 day.id, normalized.mealType, normalized.foodName, normalized.amount, normalized.unit,
                 normalized.caloriesKcal, normalized.proteinG, normalized.carbsG, normalized.fatG,
                 normalized.fiberG, normalized.eatenAt, normalized.note, now, now,
+                normalized.calorieSourceType ?? null, normalized.calorieSourceRef ?? null, normalized.calorieEstimateLowKcal ?? null,
+                normalized.calorieEstimateHighKcal ?? null, normalized.calorieConfidence ?? null, normalized.calorieEstimationNote ?? null,
             );
             this.touchDay(day.id, now);
             return this.foodById(Number(result.lastInsertRowid))!;
@@ -246,6 +324,7 @@ export class DailyRecordStore {
         return this.transaction(() => {
             const existing = this.foodById(id);
             if (!existing) throw new Error("食物记录不存在");
+            // 先与旧记录合并再整体验证，防止局部修改留下不完整分量或失效估算区间。
             const normalized = normalizeFoodInput({
                 mealType: existing.mealType,
                 foodName: existing.foodName,
@@ -258,17 +337,27 @@ export class DailyRecordStore {
                 fiberG: existing.fiberG,
                 eatenAt: existing.eatenAt,
                 note: existing.note,
+                calorieSourceType: existing.calorieSourceType,
+                calorieSourceRef: existing.calorieSourceRef,
+                calorieEstimateLowKcal: existing.calorieEstimateLowKcal,
+                calorieEstimateHighKcal: existing.calorieEstimateHighKcal,
+                calorieConfidence: existing.calorieConfidence,
+                calorieEstimationNote: existing.calorieEstimationNote,
                 ...changes,
             });
             this.db.prepare(`
                 UPDATE food_entries SET
                     meal_type = ?, food_name = ?, amount = ?, unit = ?, calories_kcal = ?,
                     protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?, eaten_at = ?, note = ?, updated_at = ?
+                    , calorie_source_type = ?, calorie_source_ref = ?, calorie_estimate_low_kcal = ?,
+                    calorie_estimate_high_kcal = ?, calorie_confidence = ?, calorie_estimation_note = ?
                 WHERE id = ?
             `).run(
                 normalized.mealType, normalized.foodName, normalized.amount, normalized.unit,
                 normalized.caloriesKcal, normalized.proteinG, normalized.carbsG, normalized.fatG,
-                normalized.fiberG, normalized.eatenAt, normalized.note, now, id,
+                normalized.fiberG, normalized.eatenAt, normalized.note, now,
+                normalized.calorieSourceType ?? null, normalized.calorieSourceRef ?? null, normalized.calorieEstimateLowKcal ?? null,
+                normalized.calorieEstimateHighKcal ?? null, normalized.calorieConfidence ?? null, normalized.calorieEstimationNote ?? null, id,
             );
             this.touchDay(existing.dailyRecordId, now);
             return this.foodById(id)!;
@@ -296,10 +385,15 @@ export class DailyRecordStore {
                 INSERT INTO exercise_entries (
                     daily_record_id, exercise_name, duration_minutes, calories_burned_kcal,
                     intensity, started_at, distance_km, note, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    , calorie_source_type, calorie_source_ref, calorie_estimate_low_kcal, calorie_estimate_high_kcal,
+                    calorie_confidence, calorie_estimation_note, met_value, reported_calories_kcal, reported_calorie_basis
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
                 day.id, normalized.exerciseName, normalized.durationMinutes, normalized.caloriesBurnedKcal,
                 normalized.intensity, normalized.startedAt, normalized.distanceKm, normalized.note, now, now,
+                normalized.calorieSourceType ?? null, normalized.calorieSourceRef ?? null, normalized.calorieEstimateLowKcal ?? null,
+                normalized.calorieEstimateHighKcal ?? null, normalized.calorieConfidence ?? null, normalized.calorieEstimationNote ?? null,
+                normalized.metValue ?? null, normalized.reportedCaloriesKcal ?? null, normalized.reportedCalorieBasis ?? null,
             );
             this.touchDay(day.id, now);
             return this.exerciseById(Number(result.lastInsertRowid))!;
@@ -312,6 +406,7 @@ export class DailyRecordStore {
         return this.transaction(() => {
             const existing = this.exerciseById(id);
             if (!existing) throw new Error("运动记录不存在");
+            // MET、设备原值和最终活动热量必须作为一条完整记录重新通过校验。
             const normalized = normalizeExerciseInput({
                 exerciseName: existing.exerciseName,
                 durationMinutes: existing.durationMinutes,
@@ -320,16 +415,31 @@ export class DailyRecordStore {
                 startedAt: existing.startedAt,
                 distanceKm: existing.distanceKm,
                 note: existing.note,
+                calorieSourceType: existing.calorieSourceType,
+                calorieSourceRef: existing.calorieSourceRef,
+                calorieEstimateLowKcal: existing.calorieEstimateLowKcal,
+                calorieEstimateHighKcal: existing.calorieEstimateHighKcal,
+                calorieConfidence: existing.calorieConfidence,
+                calorieEstimationNote: existing.calorieEstimationNote,
+                metValue: existing.metValue,
+                reportedCaloriesKcal: existing.reportedCaloriesKcal,
+                reportedCalorieBasis: existing.reportedCalorieBasis,
                 ...changes,
             });
             this.db.prepare(`
                 UPDATE exercise_entries SET
                     exercise_name = ?, duration_minutes = ?, calories_burned_kcal = ?, intensity = ?,
                     started_at = ?, distance_km = ?, note = ?, updated_at = ?
+                    , calorie_source_type = ?, calorie_source_ref = ?, calorie_estimate_low_kcal = ?,
+                    calorie_estimate_high_kcal = ?, calorie_confidence = ?, calorie_estimation_note = ?,
+                    met_value = ?, reported_calories_kcal = ?, reported_calorie_basis = ?
                 WHERE id = ?
             `).run(
                 normalized.exerciseName, normalized.durationMinutes, normalized.caloriesBurnedKcal,
-                normalized.intensity, normalized.startedAt, normalized.distanceKm, normalized.note, now, id,
+                normalized.intensity, normalized.startedAt, normalized.distanceKm, normalized.note, now,
+                normalized.calorieSourceType ?? null, normalized.calorieSourceRef ?? null, normalized.calorieEstimateLowKcal ?? null,
+                normalized.calorieEstimateHighKcal ?? null, normalized.calorieConfidence ?? null, normalized.calorieEstimationNote ?? null,
+                normalized.metValue ?? null, normalized.reportedCaloriesKcal ?? null, normalized.reportedCalorieBasis ?? null, id,
             );
             this.touchDay(existing.dailyRecordId, now);
             return this.exerciseById(id)!;

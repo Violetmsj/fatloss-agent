@@ -8,6 +8,7 @@ import { useRoute, useRouter } from "vue-router";
 import { api, type Conversation } from "../api";
 import ChatImageAttachments from "../components/ChatImageAttachments.vue";
 import ChatImageUploadButton from "../components/ChatImageUploadButton.vue";
+import QuestionnaireCard from "../components/QuestionnaireCard.vue";
 import { Conversation as ConversationBox, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "../components/ai-elements/conversation";
 import { Loader } from "../components/ai-elements/loader";
 import { Message, MessageAction, MessageActions, MessageContent, MessageResponse } from "../components/ai-elements/message";
@@ -15,6 +16,7 @@ import { PromptInput, PromptInputBody, PromptInputFooter, PromptInputSubmit, Pro
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "../components/ai-elements/tool";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { isLatestPendingQuestionnaire } from "../questionnaire";
 
 const route = useRoute();
 const router = useRouter();
@@ -164,6 +166,15 @@ function hasToolInput(input: unknown): boolean {
     if (!input || typeof input !== "object") return input !== undefined && input !== null;
     return Object.keys(input).length > 0;
 }
+
+async function submitQuestionnaire(text: string): Promise<void> {
+    if (busy.value) return;
+    await sendMessage({ text });
+}
+
+async function cancelQuestionnaire(): Promise<void> {
+    await submitQuestionnaire("取消本次记录");
+}
 </script>
 
 <template>
@@ -209,13 +220,14 @@ function hasToolInput(input: unknown): boolean {
                         <h2>从今天的状态开始</h2>
                         <p>可以告诉我体重变化、饮食计划、训练安排，或直接问一个减脂问题。</p>
                     </ConversationEmptyState>
-                    <Message v-for="message in messages" :key="message.id" :from="message.role" class="message-row">
+                    <Message v-for="(message, messageIndex) in messages" :key="message.id" :from="message.role" class="message-row">
                         <div class="message-stack">
                             <div class="message-role"><span />{{ message.role === "user" ? "我 · YOU" : "减脂陪伴 · AGENT" }}</div>
                             <MessageContent>
                                 <template v-for="(part, index) in message.parts" :key="`${message.id}-${index}`">
                                     <MessageResponse v-if="part.type === 'text'" class="message-response" :content="part.text" />
                                     <img v-else-if="isImageFile(part)" class="message-image" :src="part.url" :alt="part.filename || '用户上传图片'">
+                                    <QuestionnaireCard v-else-if="isDynamicTool(part) && part.toolName === 'ask_user'" :input="part.input" :active="isLatestPendingQuestionnaire(messages, messageIndex, part.toolCallId)" :disabled="busy" @submit="submitQuestionnaire" @cancel="cancelQuestionnaire" />
                                     <Tool v-else-if="isDynamicTool(part)" class="tool-card" :data-tool-state="part.state">
                                         <ToolHeader :type="part.type" :state="part.state" :tool-name="part.toolName" :title="part.title" />
                                         <ToolContent><ToolInput v-if="hasToolInput(part.input)" :input="part.input" /><ToolOutput :output="part.output" :error-text="part.errorText" /></ToolContent>

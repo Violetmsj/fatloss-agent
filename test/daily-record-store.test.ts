@@ -172,6 +172,41 @@ test("运动明细单独汇总，不改变每日总消耗和摄入快照", () =>
     assert.equal(details.summary.totalExerciseKcal, 300);
 }));
 
+test("食物与运动来源、估算区间和设备原始值可持久化并严格校验", () => withStore((_repository, store, profile) => {
+    const food = store.addFood("2026-09-21", profile, {
+        ...breakfast,
+        caloriesKcal: 150,
+        calorieSourceType: "web_estimate",
+        calorieSourceRef: "https://example.test/food",
+        calorieEstimateLowKcal: 120,
+        calorieEstimateHighKcal: 180,
+        calorieConfidence: "medium",
+        calorieEstimationNote: "按一份估算",
+    });
+    assert.equal(food.calorieConfidence, "medium");
+    assert.equal(food.calorieEstimateHighKcal, 180);
+    const exercise = store.addExercise("2026-09-21", profile, {
+        ...running,
+        caloriesBurnedKcal: 230,
+        calorieSourceType: "wearable",
+        calorieSourceRef: "Apple Watch",
+        calorieConfidence: "medium",
+        calorieEstimationNote: "总热量减静息消耗",
+        metValue: null,
+        reportedCaloriesKcal: 300,
+        reportedCalorieBasis: "total",
+    });
+    assert.equal(exercise.reportedCaloriesKcal, 300);
+    assert.equal(exercise.reportedCalorieBasis, "total");
+    assert.throws(() => store.addFood("2026-09-22", profile, {
+        ...breakfast,
+        caloriesKcal: 100,
+        calorieEstimateLowKcal: 120,
+        calorieEstimateHighKcal: 150,
+    }), /下界/);
+    assert.equal(store.getByDate("2026-09-22"), null);
+}));
+
 test("删除每日记录级联删除明细，非法输入不创建半条每日记录", () => withStore((repository, store, profile) => {
     assert.throws(() => store.addFood("2026-09-22", profile, { ...breakfast, amount: 1, unit: null }), /数量和单位/);
     assert.equal(store.getByDate("2026-09-22"), null);
