@@ -205,6 +205,69 @@ test("聊天 API 在模型未声明视觉能力时拒绝图片", async () => {
   }
 });
 
+test("思考强度 API 读取、更新当前会话，并传递校验与忙碌错误", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "fatloss-server-thinking-"));
+  const profiles = new ProfileRepository(join(directory, "profile.sqlite"));
+  const id = "01a0b3f0-eae5-76a0-a9e6-daa60f1ee406";
+  let level = "low";
+  const availableLevels = ["off", "low", "high"];
+  const registry = {
+    getThinkingState: async (conversationId: string) => {
+      assert.equal(conversationId, id);
+      return { level, availableLevels };
+    },
+    setThinkingLevel: async (conversationId: string, nextLevel: string) => {
+      assert.equal(conversationId, id);
+      if (nextLevel === "off") throw new HttpError(409, "该会话正在生成回复，暂时无法调整思考强度。", "CONVERSATION_BUSY");
+      if (!availableLevels.includes(nextLevel)) throw new HttpError(400, "当前模型不支持该思考强度。", "INVALID_THINKING_LEVEL");
+      level = nextLevel;
+      return { level, availableLevels };
+    },
+  } as unknown as ConversationSessionRegistry;
+  try {
+    await withServer(profiles, async (baseUrl) => {
+      const current = await fetch(`${baseUrl}/api/conversations/${id}/thinking`);
+      assert.equal(current.status, 200);
+      assert.deepEqual(await current.json(), { level: "low", availableLevels });
+
+      const updated = await fetch(`${baseUrl}/api/conversations/${id}/thinking`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ level: "high" }),
+      });
+      assert.equal(updated.status, 200);
+      assert.deepEqual(await updated.json(), { level: "high", availableLevels });
+
+      const malformed = await fetch(`${baseUrl}/api/conversations/${id}/thinking`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      assert.equal(malformed.status, 400);
+      assert.equal((await malformed.json() as { error: { code: string } }).error.code, "INVALID_THINKING_LEVEL");
+
+      const unsupported = await fetch(`${baseUrl}/api/conversations/${id}/thinking`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ level: "medium" }),
+      });
+      assert.equal(unsupported.status, 400);
+      assert.equal((await unsupported.json() as { error: { code: string } }).error.code, "INVALID_THINKING_LEVEL");
+
+      const busy = await fetch(`${baseUrl}/api/conversations/${id}/thinking`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ level: "off" }),
+      });
+      assert.equal(busy.status, 409);
+      assert.equal((await busy.json() as { error: { code: string } }).error.code, "CONVERSATION_BUSY");
+    }, registry);
+  } finally {
+    profiles.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("删除会话 API 成功返回 204 空响应，并把 registry 的 404 转成业务错误", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fatloss-server-delete-"));
   const profiles = new ProfileRepository(join(directory, "profile.sqlite"));

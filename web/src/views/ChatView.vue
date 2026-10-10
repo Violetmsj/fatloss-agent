@@ -5,7 +5,7 @@ import { DefaultChatTransport, type DynamicToolUIPart, type FileUIPart, type UIM
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
-import { api, type Conversation } from "../api";
+import { api, type Conversation, type ConversationThinkingState, type ThinkingLevel } from "../api";
 import ChatImageAttachments from "../components/ChatImageAttachments.vue";
 import ChatImageUploadButton from "../components/ChatImageUploadButton.vue";
 import QuestionnaireCard from "../components/QuestionnaireCard.vue";
@@ -16,6 +16,7 @@ import { PromptInput, PromptInputBody, PromptInputFooter, PromptInputSubmit, Pro
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "../components/ai-elements/tool";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "../components/ui/select";
 import { isLatestPendingQuestionnaire } from "../questionnaire";
 
 const route = useRoute();
@@ -32,6 +33,9 @@ const attachmentError = ref("");
 const deleteTarget = ref<Conversation | null>(null);
 const deleting = ref(false);
 const deleteError = ref("");
+const thinking = ref<ConversationThinkingState | null>(null);
+const thinkingUpdating = ref(false);
+const thinkingError = ref("");
 
 const allowedImageTypes = "image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif";
 
@@ -57,9 +61,14 @@ onMounted(async () => {
             return;
         }
         // 侧栏元数据和当前会话历史独立加载，历史会由后端过滤 thinking 并恢复工具卡片。
-        const [list, history] = await Promise.all([api.listConversations(), api.getMessages(conversationId)]);
+        const [list, history, thinkingState] = await Promise.all([
+            api.listConversations(),
+            api.getMessages(conversationId),
+            api.getConversationThinking(conversationId),
+        ]);
         conversations.value = list;
         messages.value = history;
+        thinking.value = thinkingState;
     } catch (cause) {
         pageError.value = cause instanceof Error ? cause.message : "会话加载失败。";
     } finally {
@@ -167,6 +176,36 @@ function hasToolInput(input: unknown): boolean {
     return Object.keys(input).length > 0;
 }
 
+const thinkingLabels: Record<ThinkingLevel, string> = {
+    off: "关闭",
+    minimal: "极低",
+    low: "低",
+    medium: "中",
+    high: "高",
+    xhigh: "很高",
+    max: "最高",
+};
+
+function thinkingLabel(level: ThinkingLevel): string {
+    return thinkingLabels[level];
+}
+
+async function updateThinkingLevel(value: unknown): Promise<void> {
+    const current = thinking.value;
+    if (!current || typeof value !== "string" || thinkingUpdating.value || busy.value) return;
+    const level = value as ThinkingLevel;
+    if (!current.availableLevels.includes(level) || level === current.level) return;
+    thinkingUpdating.value = true;
+    thinkingError.value = "";
+    try {
+        thinking.value = await api.setConversationThinking(conversationId, level);
+    } catch (cause) {
+        thinkingError.value = cause instanceof Error ? cause.message : "思考强度更新失败，请稍后重试。";
+    } finally {
+        thinkingUpdating.value = false;
+    }
+}
+
 async function submitQuestionnaire(text: string): Promise<void> {
     if (busy.value) return;
     await sendMessage({ text });
@@ -248,9 +287,23 @@ async function cancelQuestionnaire(): Promise<void> {
                 <PromptInput class="composer" :accept="allowedImageTypes" multiple :max-files="4" :max-file-size="5 * 1024 * 1024" @submit="handleSubmit" @error="handleAttachmentError">
                     <ChatImageAttachments />
                     <PromptInputBody><PromptInputTextarea placeholder="告诉我你今天的饮食、训练或困惑…" /></PromptInputBody>
-                    <PromptInputFooter><PromptInputTools><ChatImageUploadButton /></PromptInputTools><span>Enter 发送 · Shift+Enter 换行</span><PromptInputSubmit :status="status" :aria-label="busy ? '停止生成' : '发送消息'" @click="busy && $event.preventDefault(); busy && stop()" /></PromptInputFooter>
+                    <PromptInputFooter>
+                        <PromptInputTools>
+                            <ChatImageUploadButton />
+                            <Select v-if="thinking" :model-value="thinking.level" :disabled="busy || thinkingUpdating || thinking.availableLevels.length <= 1" @update:model-value="updateThinkingLevel">
+                                <SelectTrigger size="sm" class="thinking-select" aria-label="选择思考强度">
+                                    <span>思考：{{ thinkingLabel(thinking.level) }}</span>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="level in thinking.availableLevels" :key="level" :value="level">{{ thinkingLabel(level) }}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </PromptInputTools>
+                        <span>Enter 发送 · Shift+Enter 换行</span><PromptInputSubmit :status="status" :aria-label="busy ? '停止生成' : '发送消息'" @click="busy && $event.preventDefault(); busy && stop()" />
+                    </PromptInputFooter>
                 </PromptInput>
                 <p v-if="attachmentError" class="attachment-error" role="alert">{{ attachmentError }}</p>
+                <p v-if="thinkingError" class="attachment-error" role="alert">{{ thinkingError }}</p>
                 <p class="notice">建议仅供健康管理参考，如有疾病或明显不适请咨询专业医生。</p>
             </footer>
         </section>
@@ -358,6 +411,7 @@ nav::before { content: ""; position: absolute; left: .55rem; top: .9rem; bottom:
 .tool-card :deep(button > div:first-child) { min-width: 0; }
 .tool-card :deep(button > div:first-child > svg) { width: 1.7rem; height: 1.7rem; padding: .35rem; border: 1px solid var(--hairline); border-radius: 6px; }
 .tool-card :deep([data-slot="badge"]) { border: 1px solid color-mix(in oklch,var(--tool-state) 45%,transparent); border-radius: 6px; background: transparent; color: var(--tool-state); font: .62rem/1 var(--font-mono); }
+.thinking-select { min-width: 6.8rem; border-color: var(--hairline); color: var(--graphite); font: .65rem/1 var(--font-mono); letter-spacing: .02em; }
 .tool-card :deep([data-slot="collapsible-content"]) { border-top: 1px solid var(--hairline); }
 .tool-card :deep(h4) { color: var(--graphite); font-family: var(--font-mono); font-size: .62rem; font-weight: 400; letter-spacing: .12em; }
 .tool-card :deep(pre) { border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface-2); color: var(--ink); font-size: .72rem; }

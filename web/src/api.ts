@@ -96,6 +96,13 @@ export interface Conversation {
     modifiedAt: string;
 }
 
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+export interface ConversationThinkingState {
+    level: ThinkingLevel;
+    availableLevels: ThinkingLevel[];
+}
+
 interface ApiErrorBody {
     error?: { code?: string; message?: string };
 }
@@ -134,4 +141,6 @@ export const api = {
     renameConversation: (id: string, name: string) => request<void>(`/api/conversations/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) }),
     deleteConversation: (id: string) => request<void>(`/api/conversations/${encodeURIComponent(id)}`, { method: "DELETE" }),
     getMessages: async (id: string) => (await request<{ messages: UIMessage[] }>(`/api/conversations/${encodeURIComponent(id)}/messages`)).messages,
+    getConversationThinking: (id: string) => request<ConversationThinkingState>(`/api/conversations/${encodeURIComponent(id)}/thinking`),
+    setConversationThinking: (id: string, level: ThinkingLevel) => request<ConversationThinkingState>(`/api/conversations/${encodeURIComponent(id)}/thinking`, { method: "PUT", body: JSON.stringify({ level }) }),
 };

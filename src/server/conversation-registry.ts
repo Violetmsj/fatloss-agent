@@ -25,6 +25,12 @@ export interface ConversationSummary {
   modifiedAt: string;
 }
 
+/** Web 会话当前实际生效的思考强度，以及该模型允许选择的档位。 */
+export interface ConversationThinkingState {
+  level: AgentSession["thinkingLevel"];
+  availableLevels: AgentSession["thinkingLevel"][];
+}
+
 interface ActiveConversation {
   runtime: AgentSessionRuntime;
   running: boolean;
@@ -135,6 +141,26 @@ export class ConversationSessionRegistry {
     return SessionManager.open(info.path).getBranch();
   }
 
+  async getThinkingState(id: string): Promise<ConversationThinkingState> {
+    const entry = await this.getOrOpen(id);
+    return this.toThinkingState(entry.runtime.session);
+  }
+
+  async setThinkingLevel(id: string, level: string): Promise<ConversationThinkingState> {
+    const entry = await this.getOrOpen(id);
+    if (entry.running) {
+      throw new HttpError(409, "该会话正在生成回复，暂时无法调整思考强度。", "CONVERSATION_BUSY");
+    }
+    const availableLevels = entry.runtime.session.getAvailableThinkingLevels();
+    if (!availableLevels.includes(level as AgentSession["thinkingLevel"])) {
+      throw new HttpError(400, "当前模型不支持该思考强度。", "INVALID_THINKING_LEVEL");
+    }
+    // 不传 persist：仅追加当前会话的 thinking_level_change，不改写 pi 的全局启动默认值。
+    entry.runtime.session.setThinkingLevel(level as AgentSession["thinkingLevel"]);
+    this.touch(id, entry);
+    return this.toThinkingState(entry.runtime.session);
+  }
+
   async acquirePrompt(id: string): Promise<PromptLease> {
     const entry = await this.getOrOpen(id);
     // 同一 JSONL 同时只允许一个 prompt；不同会话拥有不同 entry，仍可并行运行。
@@ -221,11 +247,17 @@ export class ConversationSessionRegistry {
         resourceLoaderOptions: createWebResourceLoaderOptions(cwd),
       });
       const model = services.modelRuntime.getModel(this.provider, this.modelId);
+      // pi SDK 把“是否续接”定义为已有消息。Web 可以在空白会话首条消息前调整思考强度，
+      // 因此需要主动带回最近一次记录，避免空白会话重新打开时退回全局默认值。
+      const savedThinkingLevel = sessionManager.getBranch().reduce<AgentSession["thinkingLevel"] | undefined>((level, entry) => (
+        entry.type === "thinking_level_change" ? entry.thinkingLevel as AgentSession["thinkingLevel"] : level
+      ), undefined);
       const created = await createAgentSessionFromServices({
         services,
         sessionManager,
         sessionStartEvent,
         model,
+        thinkingLevel: savedThinkingLevel,
         // Web Agent 只开放项目扩展注册的业务工具，不开放读写文件、执行 shell 等内置工具。
         noTools: "builtin",
       });
@@ -278,6 +310,13 @@ export class ConversationSessionRegistry {
       messageCount: info.messageCount,
       createdAt: info.created.toISOString(),
       modifiedAt: info.modified.toISOString(),
+    };
+  }
+
+  private toThinkingState(session: AgentSession): ConversationThinkingState {
+    return {
+      level: session.thinkingLevel,
+      availableLevels: session.getAvailableThinkingLevels(),
     };
   }
 }

@@ -76,6 +76,19 @@ export function createServerApp(options: CreateServerAppOptions) {
     response.json({ messages: sessionEntriesToUIMessages(entries) });
   });
 
+  // 思考强度是 pi 会话自身的状态；读取和修改都会打开该会话，但不会改变全局默认设置。
+  app.get("/api/conversations/:id/thinking", async (request, response) => {
+    response.json(await options.registry.getThinkingState(request.params.id));
+  });
+
+  app.put("/api/conversations/:id/thinking", async (request, response) => {
+    const level = request.body?.level;
+    if (typeof level !== "string") {
+      throw new HttpError(400, "思考强度格式无效。", "INVALID_THINKING_LEVEL");
+    }
+    response.json(await options.registry.setThinkingLevel(request.params.id, level));
+  });
+
   // 启动一次 Agent prompt，并把 pi 事件实时转成 AI SDK UI Message Stream。
   app.post("/api/conversations/:id/messages", async (request, response) => {
     if (!profiles.get()) throw new HttpError(412, "请先完成减脂建档。", "PROFILE_REQUIRED");
