@@ -1,4 +1,6 @@
 import type { UIMessage } from "ai";
+import type { ReportFilter, ReportList, ReportView } from "../../src/reports/types.ts";
+export type { ReportFilter, ReportList, ReportView, ReportMetadata, ReportType } from "../../src/reports/types.ts";
 
 export interface ProfileInput {
     gender: string;
@@ -133,6 +135,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 // 页面使用的普通 REST 接口；聊天流由 @ai-sdk/vue 的 DefaultChatTransport 单独管理。
 export const api = {
+    listReports: (filter: ReportFilter = {}) => {
+        const query = new URLSearchParams(Object.entries(filter).flatMap(([key, value]) => value === undefined || value === "" ? [] : [[key, String(value)]]));
+        return request<ReportList>(`/api/reports?${query}`);
+    },
+    getReport: (id: string) => request<ReportView>(`/api/reports/${encodeURIComponent(id)}`),
     getProfile: () => request<ProfileResponse>("/api/profile"),
     previewProfile: (profile: ProfileInput) => request<ProfilePreview>("/api/profile/preview", { method: "POST", body: JSON.stringify(profile) }),
     saveProfile: (profile: ProfileInput) => request<ProfilePreview>("/api/profile", { method: "PUT", body: JSON.stringify(profile) }),

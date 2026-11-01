@@ -21,6 +21,13 @@ const isObjectOutput = computed(
   () => typeof props.output === 'object' && !isVNode(props.output),
 )
 const isStringOutput = computed(() => typeof props.output === 'string')
+const reportOutput = computed(() => {
+  if (!props.output || typeof props.output !== 'object') return null
+  const value = props.output as { summary?: unknown; reportUrl?: unknown }
+  return typeof value.summary === 'string' && typeof value.reportUrl === 'string'
+    && /^\/reports\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.reportUrl)
+    ? { summary: value.summary, reportUrl: value.reportUrl } : null
+})
 
 const formattedOutput = computed(() => {
   if (isObjectOutput.value) {
@@ -58,15 +65,19 @@ const formattedOutput = computed(() => {
 
       <!-- Output rendering based on type -->
       <CodeBlock
-        v-if="isObjectOutput"
+        v-if="isObjectOutput && !reportOutput"
         :code="formattedOutput"
         language="json"
       />
       <CodeBlock
-        v-else-if="isStringOutput"
+        v-else-if="isStringOutput && !reportOutput"
         :code="formattedOutput"
         language="json"
       />
+      <div v-else-if="reportOutput" class="p-3 space-y-2">
+        <p>{{ reportOutput.summary }}</p>
+        <RouterLink :to="reportOutput.reportUrl" class="underline">查看报告</RouterLink>
+      </div>
       <div v-else>
         {{ props.output }}
       </div>

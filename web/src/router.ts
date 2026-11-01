@@ -13,5 +13,7 @@ export default createRouter({
     { path: "/onboarding", component: OnboardingView },
     { path: "/chat/:conversationId", component: ChatView },
     { path: "/profile", component: ProfileView },
+    { path: "/reports", component: () => import("./views/ReportsView.vue") },
+    { path: "/reports/:id", component: () => import("./views/ReportView.vue") },
   ],
 });

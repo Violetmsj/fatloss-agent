@@ -240,6 +240,7 @@ async function cancelQuestionnaire(): Promise<void> {
                 </div>
             </nav>
             <RouterLink class="profile-link" to="/profile"><Settings2Icon />个人画像</RouterLink>
+            <RouterLink class="profile-link" to="/reports">减脂报告</RouterLink>
         </aside>
 
         <section class="chat-main">
