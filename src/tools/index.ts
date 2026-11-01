@@ -9,6 +9,7 @@ import { createMemoryTools } from "./memories.ts";
 import { createCalculateEnergyNeedsTool } from "./calculate-energy-needs.ts";
 import { createAskUserTool } from "./ask-user.ts";
 import { createDailyRecordTools } from "./daily-records.ts";
+import { createReportTools } from "./reports.ts";
 import { createEstimationTools, type EstimationToolDependencies } from "./estimate-calories.ts";
 
 /**
@@ -20,6 +21,6 @@ export function createFatlossTools(repository: ProfileRepository, memories = new
   return [
     createGetCurrentTimeTool(), createGetCurrentProfileTool(repository), createCalculateEnergyNeedsTool(repository),
     createUpdateCurrentProfileTool(repository), createSearchFatlossKnowledgeTool(), createAskUserTool(),
-    ...createEstimationTools(repository, estimationDependencies), ...createDailyRecordTools(repository), ...createMemoryTools(memories),
+    ...createEstimationTools(repository, estimationDependencies), ...createDailyRecordTools(repository), ...createReportTools(repository), ...createMemoryTools(memories),
   ];
 }

@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { initializeDailyRecordSchema } from "./daily-record-store.ts";
+import { initializeReportSchema } from "./reports/store.ts";
 import { type Profile, type ProfileInput, type ProfilePatch, validateProfile } from "./profile.ts";
 
 const PROFILE_COLUMNS = `
@@ -136,6 +137,7 @@ export class ProfileRepository {
           `);
         }
         initializeDailyRecordSchema(this.db);
+        initializeReportSchema(this.db);
       });
     } catch (error) {
       this.db.close();
