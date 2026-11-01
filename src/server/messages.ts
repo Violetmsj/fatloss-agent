@@ -96,7 +96,7 @@ export function sessionEntriesToUIMessages(entries: SessionEntry[]): UIMessage[]
       if (message.isError) {
         Object.assign(part, { state: "output-error", errorText: presentToolError(message.toolName, message.content) });
       } else {
-        Object.assign(part, { state: "output-available", output: presentToolOutput(message.toolName) });
+        Object.assign(part, { state: "output-available", output: presentToolOutput(message.toolName, message) });
       }
     }
   }

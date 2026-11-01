@@ -21,6 +21,13 @@ const TOOL_TITLES: Record<string, string> = {
   update_exercise_entry: "修改运动记录",
   delete_exercise_entry: "删除运动记录",
   delete_daily_record: "删除整日记录",
+  generate_daily_report: "生成减脂日报",
+  generate_weekly_report: "生成减脂周报",
+  generate_monthly_report: "生成减脂月报",
+  generate_yearly_report: "生成减脂年报",
+  generate_custom_report: "生成自定义减脂报告",
+  list_reports: "查询减脂报告",
+  get_report: "读取减脂报告",
 };
 
 /** 把内部工具名转换成用户可理解的中文卡片标题。 */
@@ -58,6 +65,11 @@ export function presentToolInput(toolName: string, args: unknown): unknown {
   if (toolName.includes("food_entry")) return { 日期: input.logDate, 记录ID: input.id, 食物: input.foodName, 餐次: input.mealType };
   if (toolName.includes("exercise_entry")) return { 日期: input.logDate, 记录ID: input.id, 运动: input.exerciseName, 时长分钟: input.durationMinutes };
   if (toolName === "delete_daily_record") return { 日期: input.logDate };
+  if (toolName.startsWith("generate_") && toolName.endsWith("_report")) {
+    return { 日期: input.date ?? input.month ?? input.year, 开始日期: input.fromDate, 结束日期: input.toDate, 更新报告: input.regenerate === true };
+  }
+  if (toolName === "get_report") return { 报告ID: input.id };
+  if (toolName === "list_reports") return { 类型: input.type, 开始日期: input.fromDate, 结束日期: input.toDate };
   // 记忆证据可能含用户原话，Web 只展示操作名称，不平铺完整参数。
   if (toolName.includes("memory") || toolName.includes("remember") || toolName.includes("forget")) {
     return { 操作: getToolTitle(toolName) };
@@ -65,8 +77,20 @@ export function presentToolInput(toolName: string, args: unknown): unknown {
   return {};
 }
 
-export function presentToolOutput(toolName: string): { summary: string } {
+export function presentToolOutput(toolName: string, result?: unknown): { summary: string; reportUrl?: string } {
   if (toolName === "ask_user") return { summary: "等待用户回答问卷" };
+  if ((toolName.startsWith("generate_") && toolName.endsWith("_report")) || toolName === "get_report") {
+    const details = result && typeof result === "object" ? (result as { details?: unknown }).details : undefined;
+    if (details && typeof details === "object") {
+      const value = details as { reportId?: unknown; stale?: unknown; summaryStatus?: unknown };
+      if (typeof value.reportId === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.reportId)) {
+        return {
+          summary: `${getToolTitle(toolName)}完成${value.stale ? "，数据已变化，当前为历史快照" : ""}${value.summaryStatus === "failed" || value.summaryStatus === "pending" ? "，统计已保存，AI 总结尚未完成" : ""}`,
+          reportUrl: `/reports/${value.reportId}`,
+        };
+      }
+    }
+  }
   return { summary: `${getToolTitle(toolName)}完成` };
 }
 

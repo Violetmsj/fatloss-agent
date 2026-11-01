@@ -172,7 +172,7 @@ function translateAgentEvent(
       writer.write({
         type: "tool-output-available",
         toolCallId: event.toolCallId,
-        output: presentToolOutput(event.toolName),
+        output: presentToolOutput(event.toolName, event.result),
         dynamic: true,
       });
     }

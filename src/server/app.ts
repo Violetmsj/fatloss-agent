@@ -5,6 +5,9 @@ import express, { type ErrorRequestHandler } from "express";
 import { pipeUIMessageStreamToResponse } from "ai";
 
 import { ProfileRepository } from "../database.ts";
+import { ReportService } from "../reports/service.ts";
+import { validateReportFilter } from "../reports/store.ts";
+import type { ReportType } from "../reports/types.ts";
 import { profileFormDefinition } from "../profile-form.ts";
 import { calculateEstimate, formatProfile, type ProfileInput, validateProfile } from "../profile.ts";
 import { createAgentMessageStream } from "./agent-stream.ts";
@@ -25,9 +28,39 @@ export interface CreateServerAppOptions {
 export function createServerApp(options: CreateServerAppOptions) {
   const app = express();
   const profiles = options.profiles ?? new ProfileRepository();
+  const reports = new ReportService(profiles.db);
   app.disable("x-powered-by");
   // 图片以 base64 放在 JSON 中；30MB 可容纳 4 张各 5MB 的图片及编码开销。
   app.use(express.json({ limit: "30mb" }));
+
+  app.get("/api/reports", (request, response) => {
+    let filter;
+    try {
+      for (const value of Object.values(request.query)) {
+        if (typeof value !== "string") throw new Error("报告筛选参数无效");
+      }
+      filter = validateReportFilter({
+        type: request.query.type as ReportType | undefined,
+        fromDate: request.query.fromDate as string | undefined, toDate: request.query.toDate as string | undefined,
+        page: request.query.page === undefined ? undefined : Number(request.query.page),
+        pageSize: request.query.pageSize === undefined ? undefined : Number(request.query.pageSize),
+      });
+    } catch (error) { throw new HttpError(400, toErrorMessage(error), "INVALID_REPORT_FILTER"); }
+    response.json(reports.store.list(filter));
+  });
+
+  app.get("/api/reports/:id", (request, response) => {
+    const report = reports.get(request.params.id);
+    if (!report) throw new HttpError(404, "报告不存在。", "REPORT_NOT_FOUND");
+    response.json(report);
+  });
+
+  app.get("/api/reports/:id/markdown", (request, response) => {
+    const report = reports.store.get(request.params.id);
+    if (!report) throw new HttpError(404, "报告不存在。", "REPORT_NOT_FOUND");
+    response.setHeader("content-disposition", `attachment; filename="${report.type}-${report.fromDate}-v${report.version}.md"`);
+    response.type("text/markdown; charset=utf-8").send(report.markdown);
+  });
 
   // 返回当前画像，同时下发选项和边界，使前端不必复制后端业务常量。
   app.get("/api/profile", (_request, response) => {
