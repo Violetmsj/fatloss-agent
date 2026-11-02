@@ -6,4 +6,6 @@ data/chroma/
 data/reference/
 .env
 dist/
-web/dist/
+lib/
+.build/
+*.tsbuildinfo

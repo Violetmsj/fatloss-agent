@@ -1,5 +1,5 @@
-import type { ProfileInput } from "../../src/profile.ts";
-import type { FoodEntryInput, ExerciseEntryInput } from "../../src/daily-record.ts";
+import type { ProfileInput } from "../../src/core/profile.ts";
+import type { FoodEntryInput, ExerciseEntryInput } from "../../src/core/daily-record.ts";
 
 export const reportProfile: ProfileInput = {
     gender: "男", age: 30, weightKg: 70, heightCm: 175, bodyFatPct: 25, waistCm: 85, hipCm: null,

@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join } from "node:path";
+import { parseArgs } from "node:util";
+import { resolveDataDirectory } from "../src/host/data-directory.ts";
 
 import { parse } from "csv-parse/sync";
 
@@ -8,8 +10,10 @@ const COMMIT = "d15675c27582748307023b7ee7aca2a63fc52756";
 const EXPECTED_SHA256 = "7f89bfde478b1ae8a9109eab7d9842e7e87d378a947e3a50b0eaa819c554dcf4";
 const EXPECTED_ROWS = 1677;
 const URL = `https://raw.githubusercontent.com/Sanotsu/china-food-composition-data/${COMMIT}/json_data_v3_20260825_qwen38max_kimi_k3_fixed_en/food_composition_full.csv`;
-const target = resolve("data/reference/food-composition-full.csv");
-const metadata = resolve("data/reference/food-composition-full.meta.json");
+const { values } = parseArgs({ options: { "data-directory": { type: "string" } } });
+const directory = resolveDataDirectory(values["data-directory"]);
+const target = join(directory, "reference/food-composition-full.csv");
+const metadata = join(directory, "reference/food-composition-full.meta.json");
 
 async function main(): Promise<void> {
     const response = await fetch(URL);

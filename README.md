@@ -1,77 +1,134 @@
-# 减脂陪伴 Agent
+# 减脂陪伴 DSH 插件
 
-当前主要入口为 **DeepSeek Harness 桌面插件**（兼容 0.2.1-rc.5），提供独立减脂 Agent、建档/画像及报告页面。安装、数据副本导入和配置见 [DSH 插件说明](packages/dsh-fatloss/README.md)。
+兼容 DeepSeek Harness **0.2.1-rc.5**，使用 Node.js 24。提供独立“减脂陪伴”预设、29 个业务工具、原生建档/画像表单与报告页面。
 
-减脂预设在当前 profile 启用 Billion Context 时使用其上下文压缩；未安装时使用 DSH 官方 Compaction Basic。安装或启停后重启 DSH，使预设重新装配。
+## 构建与安装
 
-原 pi TUI、Express 后端与 Vue WebUI 保留为封存入口，下面的原有启动说明仍可使用；DSH 日常运行不依赖这些服务。迁移后的业务数据库独立保存，旧聊天不会自动导入。
+在项目根目录执行：
 
-一个仅供个人使用的中文减脂陪伴助手。DSH 插件在宿主内提供聊天、建档、画像和报告；共享领域代码同时支持保留的 [pi](https://github.com/earendil-works/pi) 入口。
-
-## 旧 pi TUI 启动（封存）
-
-要求：Node.js 24（或至少 Node.js 22.19）。
-
-```bash
+```sh
 npm install
-npm run tui
+npm run pack:plugin
+dsh plugin --profile desktop add ./dist/dsh-plugin-fatloss-agent-0.1.3.tgz
 ```
 
-首次启动时，pi 会请求信任项目扩展；确认信任后，若没有画像会自动进入建档流程。聊天需要先在 pi 中配置或登录任一模型提供方；本项目不会保存 API Key，也不绑定特定供应商。
+macOS 桌面端的 CLI 若未加入 PATH，可以使用应用内置启动器：
 
-常用命令：
-
-- `/onboard`：填写或覆盖当前画像。
-- `/profile`：查看当前画像和粗略周期估算。
-- `/memories`：查看有效长期记忆；`/memories all` 包含失效记录，末尾可加页码。
-
-## 长期记忆
-
-长期记忆与当前资料共用 `data/fatloss.sqlite`，不写入 Chroma。启用后累计 10 轮用户对话，或回复结束后空闲 5 分钟，会使用当前会话模型在后台提取有原话依据的独立记忆。没有值得保留的信息时不入库、不提示；有效变更后简短提示。
-
-第一版只存用户明确陈述，不把普通问答、假设、他人情况或未接受的助手建议当成用户事实。用户明确要求记住、纠正或忘记时，通过统一记忆工具立即处理。没有明确期限的阶段状态默认在原话发出 7 天后失效；稳定偏好等不默认过期。记忆在后续回复前加载，原有资料修改仍需确认。
-
-不导入启用前的聊天；恢复对应会话后可继续处理未完成的新对话。删除长期记忆不清除 pi 原始聊天记录。模型理解仍可能出错，可用 `/memories` 检查和纠正。模型评估样例与完整验收步骤见 [长期记忆验证](docs/memory-evaluation.md)。
-
-## 知识库
-
-减脂问答知识源文件存放在 [knowledge_doc/减脂-问答汇总.md](knowledge_doc/减脂-问答汇总.md)，无需转换成 TXT；二级标题中的每一个问答会成为一个或多个语义检索片段。`knowledge_doc/` 用于放置后续知识文档，`src/knowledge/` 则只放知识库的 TypeScript 实现。
-
-首次使用前，在两个终端分别执行：
-
-```bash
-# 终端一：启动本机 Chroma，数据保存在 data/chroma/
-npm run chroma
-
-# 终端二：首次仅需复制示例配置并填写百炼 API Key 与向量接口地址
-cp .env.example .env
-
-# 索引和 TUI 命令都会自动读取 .env
-npm run kb:index
-npm run tui
+```sh
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" plugin --profile desktop add ./dist/dsh-plugin-fatloss-agent-0.1.3.tgz
 ```
 
-`npm run kb:index` 只在你修改问答 Markdown 后手动运行。聊天时，助手会检索最多 3 条相关片段，并在答案末尾标明原问题标题。百炼 `qwen3.7-text-embedding-flash` 会接收用于建库的文档内容及每次检索问题；Chroma 向量数据仍仅保存在本机。API Key 位于 `.env`，不会被提交到 Git。切换嵌入模型或向量维度后，也必须重新执行一次 `npm run kb:index`，不能将不同模型生成的向量混用。
+安装后从侧栏打开“减脂陪伴”，填写并预览画像、确认保存，然后点击“开始减脂聊天”。也可以在 DSH 新会话中选择“减脂陪伴”预设。安装不会替换默认 Agent。
 
-## 减脂报告
+预编译 `.tgz` 可直接交给上述 CLI 安装，不需要检出本仓库。开发期间若重复构建同版本、同路径的 tgz，pnpm 可能沿用锁文件中的旧内容；请使用新版本或带内容摘要的新文件名，并核对实际安装文件。
 
-支持通过聊天按需生成日报、周报、月报、年报和自定义日期报告。五套独立固定模板使用程序计算指标，AI 仅撰写末尾总结；统计快照和总结保存在本机 SQLite，重复查看不重新调用模型。补记后可明确要求更新，历史版本会保留。
+## 宿主配置
 
-Web 聊天侧栏的“减脂报告”提供图表、表格、版本查看与 Markdown 下载。周期、统计口径和接口详见 [减脂报告说明](docs/reports.md)。
+模型和聊天历史由 DSH 管理；插件不自动读取项目 `.env`。业务数据默认保存到 `$DSH_HOME/storages/fatloss-agent/`，未配置 `DSH_HOME` 时使用 `~/.dsh/storages/fatloss-agent/`。插件配置项如下；私密配置只在宿主读取，客户端不会获得密钥或数据库路径：
 
-## 数据与边界
+| 配置 | 用途 |
+|---|---|
+| `dataDirectory` | 独立数据目录，默认使用 DSH 存储目录 |
+| `embeddingApiKey` | 百炼嵌入凭据；也支持 `DASHSCOPE_API_KEY` |
+| `embeddingUrl` | 嵌入接口；也支持 `DASHSCOPE_EMBEDDING_URL` |
+| `chromaHost` / `chromaPort` | 默认 `localhost:8000`；兼容 `CHROMA_HOST` / `CHROMA_PORT` |
 
-- 用户画像保存在 `data/fatloss.sqlite`、知识库向量保存在 `data/chroma/`，均不会被提交到 Git。
-- 食物记录优先采用用户提供的包装数据；也可手动执行 `npm run food-data:sync` 下载本地中国食物成分资料。数据不会随项目分发，具体来源、限制和版权提示见 [食物热量数据来源](docs/food-calorie-sources.md)。
-- 混合菜或本地无匹配时才使用受限联网估算；默认走 Tavily keyless 模式，可选在 `.env` 配置 `TAVILY_API_KEY`。估算值会展示区间、假设和来源，确认后才记录。
-- 运动优先采用手表/手环的活动热量；没有设备值时只联网匹配 MET，热量由本地固定公式计算，且不会再次叠加到 TDEE。
-- 每日总能量缺口为饮食控制与活动合计的目标，限制在 300–1000 千卡。
-- 周期估算使用静态热量换算，只适合粗略参考；实际结果会受代谢变化、体脂测量误差和执行情况影响。
-- 助手只提供一般成人健康生活方式建议，不能替代医生或注册营养师的诊断与治疗。
+显式配置优先于环境变量。使用本机 Chroma 服务和 `fatloss_knowledge` 集合，本插件不会移动或重建向量库。联网热量估算要求宿主全局已有可用的 `web_search`；子 Agent 只获准调用此检索工具，不能使用画像或写库工具。
 
-## 开发验证
+配置可在当前 profile 的 `cordis.patch.yml` 现有列表中追加以下条目（desktop 默认位于 `~/.dsh/profiles/desktop/cordis.patch.yml`）。这是本机私密配置，不要加入项目仓库；示例中的凭据与地址需要自行填写。项目 `.env` 仅供维护命令使用。
 
-```bash
+```yaml
+- id: fatloss-host
+  config:
+    embeddingApiKey: "填写百炼 API Key"
+    embeddingUrl: "填写百炼兼容 embeddings 地址"
+    chromaHost: localhost
+    chromaPort: 8000
+```
+
+未配置知识库时，页面列出缺少的具体配置项，其余功能仍可使用。缺少 Chroma 服务或检索提供方时，对应工具返回错误，不编造检索结果。
+
+报告由聊天工具生成，页面只查看、筛选和导出已保存快照。AI 总结失败时统计仍保存；明确要求重试或更新时才重新生成。
+
+## 上下文压缩
+
+从 0.1.1 起，减脂预设兼容同一 DSH profile 已启用的 Billion Context（本机验证版本 0.1.211），无需减脂业务主动触发压缩。减脂工具之外，仅允许其已注册的 `compress`、`decompress`、`search_context`、`acp_status`、`acp_cache`、`acp_retrieve`、`acp_read_original_image`；每步模型请求前重新检查，以支持代理晚启动或工具重新注册。没有安装时，减脂预设仍可独立启动。
+
+从 0.1.2 起，未安装 Billion Context 时，减脂预设自动装配 DSH 官方 `@deepseek-ai/dsh-compaction-basic`，由它在上下文压力或溢出时调用当前会话模型生成摘要；也可用 `/compact` 手动压缩。该服务隔离在减脂预设内，不改变普通聊天。摘要会有额外模型调用成本。
+
+同一 profile 安装并启用 Billion Context 后，减脂预设会等待其 `biliBasicCompactionPolicy` 协调器加载，再由它在装配期停用预设内的 Basic 和 `/compact`，使用 Billion Context 自身的策略，避免双重压缩。Billion Context 是可选插件，不会随本插件自动安装。可在减脂聊天中运行 `/acp` 查看其状态。
+
+安装、卸载或启停 Billion Context 后请重启 DSH，再恢复聊天，使预设重新装配。安装目录中有包但没有在当前 profile 启用 bundle，不视为已启用。Billion 启动异常时会显示其自身错误，不会在一次请求中途改用 Basic 并改写历史。Billion 0.1.211 的协调器需要保持启用；停用主入口或移除整个 Billion bundle，请遵循该插件说明。
+
+普通会话的工具配置不变；联网估算子 Agent 仍只允许检索，不继承这些上下文工具。不开放终端、文件写入或 Agent 委派。若自行重命名 Billion Context 工具，需相应适配白名单。
+
+## 停用与开发验证
+
+在 DSH 插件管理页停用本 bundle；页面、预设工具和后台任务随生命周期移除，持久业务数据保留。
+
+也可以在上述 profile 补丁列表中添加两项以停用，重新启用时移除相应 `disabled` 项：
+
+```yaml
+- id: fatloss-preset
+  disabled: true
+- id: fatloss-host
+  disabled: true
+```
+
+卸载包可执行 `dsh plugin --profile desktop remove dsh-plugin-fatloss-agent`，并移除自己添加的减脂配置条目；保留存储目录即可保留业务数据。删除长期记忆不等于删除 DSH 的原始聊天记录。
+
+```sh
 npm run typecheck
 npm test
+npm run build
+npm run pack:plugin
 ```
+
+客户端构建复用宿主 React，输出 DSH lazy-CJS factory；浏览器安全的纯协议代码随客户端打包。Remote 元数据由官方 Typert 生成器生成。0.2.1 的生成器依赖工作区源码位置，因此构建时建立临时反射工作区；正式类型检查和运行始终使用真实 SDK。
+
+## 项目结构
+
+仓库根目录就是 `dsh-plugin-fatloss-agent` 插件包，使用 Node.js 24 开发。
+
+- `src/index.ts` / `src/agent.ts`：宿主与减脂预设入口。
+- `src/host/`：服务、Remote、模型、消息来源和生命周期接线。
+- `src/client/`：宿主内 React 建档、画像及报告页面。
+- `src/core/`：画像、能量计算、每日记录、记忆、知识库和报告业务；不导入宿主 SDK。
+- `src/prompts/system.md`：减脂规则、健康边界和工具调用要求。
+- `test/core/` / `test/plugin/`：业务与插件测试；使用临时 SQLite、虚构资料和假模型。
+- `scripts/`：手动维护命令；`knowledge_doc/`：人工维护的知识源。
+- `lib/` / `dist/`：生成代码与安装包，不提交。
+
+## 知识库维护
+
+插件继续使用 `fatloss_knowledge` 集合，向量数据保留在本机原目录。使用知识检索时，需要保持 Chroma 服务运行：
+
+```sh
+npm run chroma
+```
+
+只有修改知识源、嵌入模型或向量维度时，才手动重建索引：
+
+```sh
+cp .env.example .env
+# 填写百炼凭据、嵌入地址和 Chroma 连接配置
+npm run kb:index
+```
+
+索引命令读取项目 `.env`；插件读取宿主配置或宿主进程环境变量，两者需要指向同一嵌入服务和 Chroma 实例。不得将不同模型或维度的向量混用。
+
+## 食物数据与业务边界
+
+可手动执行 `npm run food-data:sync`，下载并校验食物成分 CSV 后写入默认 DSH 存储目录。自定义了插件的 `dataDirectory` 时，显式指定相同目录：
+
+```sh
+npm run food-data:sync -- --data-directory /绝对路径/减脂存储目录
+```
+
+安装和启动不自动下载食物数据。来源与使用限制见 [食物数据说明](docs/food-calorie-sources.md)。
+
+基础代谢使用 Mifflin–St Jeor 公式估算；每日总消耗为基础代谢乘活动水平系数，每日摄入参考为总消耗减画像已设置的每日能量缺口。运动记录用于事实回顾，不再叠加到总消耗或摄入参考。工具结果是参考估算，不承诺精确减重，也不替代医疗诊疗。
+
+长期记忆累计十轮用户发言或回复结束后空闲五分钟提取，只接受真实用户原话；可通过聊天要求记住、纠正、失效或忘记。没有合格事实时不新增记录。删除记忆不会清除宿主聊天历史。[记忆设计](docs/memory-code-walkthrough.md)、[人工验证](docs/memory-manual-dialogues.md)。
+
+报告支持日报、周报、月报、年报和自定义周期。程序生成统计快照，AI 仅补充总结；页面查看已存版本和 Markdown，不重新调用模型。[报告说明](docs/reports.md)。

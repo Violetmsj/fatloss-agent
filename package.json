@@ -1,43 +1,135 @@
 {
-  "name": "fatloss-agent",
+  "name": "dsh-plugin-fatloss-agent",
+  "version": "0.1.3",
   "private": true,
-  "workspaces": [
-    "web",
-    "packages/dsh-fatloss"
-  ],
   "type": "module",
+  "engines": {
+    "node": ">=24",
+    "dsh": "0.2.1-rc.5"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./agent": {
+      "types": "./lib/types/agent.d.ts",
+      "default": "./lib/agent.js"
+    },
+    "./client": "./lib/client.js",
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types.js"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts",
+    "lib/typert.remote-client.d.ts.map"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
+    }
+  },
   "scripts": {
-    "tui": "node --env-file=.env node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js --provider deepseek --model deepseek-flash",
-    "server": "node --env-file=.env --import tsx src/server/index.ts",
-    "web:dev": "npm --prefix web run dev",
-    "dev": "concurrently -k -n server,web -c cyan,magenta \"npm run server\" \"npm run web:dev\"",
-    "web:typecheck": "npm --prefix web run typecheck",
-    "web:test": "npm --prefix web run test",
-    "web:build": "npm --prefix web run build",
+    "typecheck": "node build.mjs --generate-only && tsc --noEmit -p tsconfig.host.json && tsc --noEmit -p tsconfig.client.json",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "build": "node build.mjs",
+    "pack:plugin": "npm run build && mkdir -p dist && npm pack --pack-destination dist",
     "chroma": "chroma run --path data/chroma",
-    "kb:index": "node --env-file=.env --import tsx src/knowledge/index.ts",
-    "memory:eval": "node --env-file=.env --import tsx src/memory-evaluation.ts",
-    "food-data:sync": "node --import tsx scripts/sync-food-data.ts",
-    "test": "tsx --test test/**/*.test.ts",
-    "typecheck": "tsc --noEmit",
-    "dsh:build": "npm --workspace dsh-plugin-fatloss-agent run build",
-    "dsh:typecheck": "npm --workspace dsh-plugin-fatloss-agent run typecheck",
-    "dsh:test": "npm --workspace dsh-plugin-fatloss-agent run test",
-    "dsh:pack": "mkdir -p dist && npm --workspace dsh-plugin-fatloss-agent run pack:plugin"
+    "kb:index": "node --env-file=.env --import tsx scripts/index-knowledge.ts",
+    "food-data:sync": "node --import tsx scripts/sync-food-data.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.85.1",
-    "@pi-plugins/websearch": "0.1.1",
-    "ai": "^7.0.106",
     "chromadb": "3.5.0",
     "csv-parse": "6.1.0",
-    "express": "^5.2.1",
-    "typebox": "1.3.27"
+    "typebox": "1.3.27",
+    "zod": "4.4.3",
+    "@deepseek-ai/dsh-brand": "0.2.1-rc.5"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-api-gateway": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-api-remotes": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-app-boot": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-connection": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-layout": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-session": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-workspace": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-command-compact": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-commands": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-compaction-basic": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-scope": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-session-projection": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-user-questions": "0.2.1-rc.5",
+    "@deepseek-ai/schemastery": "3.18.5",
+    "@deepseek-ai/dsh-agent-preset": "0.2.1-rc.5"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
+    "@deepseek-ai/dsh-typert-generator": "0.2.1-rc.5",
+    "@types/react": "^19.2.0",
+    "esbuild": "0.27.7",
+    "react": "19.2.0",
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-api-gateway": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-api-remotes": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-app-boot": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-connection": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-layout": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-session": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-client-ui-workspace": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-command-compact": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-commands": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-compaction-basic": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-scope": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-session-projection": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-user-questions": "0.2.1-rc.5",
+    "@deepseek-ai/schemastery": "3.18.5",
+    "@deepseek-ai/dsh-agent-preset": "0.2.1-rc.5",
     "@types/node": "24.10.1",
-    "concurrently": "^10.0.5",
     "tsx": "4.21.0",
     "typescript": "5.9.3"
   }
