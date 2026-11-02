@@ -6,6 +6,8 @@ import { toolContext, generateText } from "./host/runtime.ts";
 import { dshTool } from "./host/tools.ts";
 import systemPrompt from "./prompts/system.md";
 import { registerFatlossToolPolicy } from "./host/context-tools.ts";
+import { ownAgentEffects } from "./host/agent-effects.ts";
+import { registerFatlossWriteConfirmation } from "./host/write-confirmation.ts";
 import type {} from "@deepseek-ai/dsh-commands";
 
 export const name = "fatloss-agent";
@@ -18,6 +20,7 @@ export function apply(ctx: Context): void {
     ctx.effect(() => () => lifecycle.abort());
     const lifetime = AbortSignal.any([lifecycle.signal, service.cancellation.signal]);
     const cancelled = new WeakSet<Agent>();
+    const ownAgent = ownAgentEffects(ctx);
     const readMessages = (agent: Agent) => ctx.sessionProjections.stateOf(agent.session, "fatloss:messages")?.messages ?? [];
     for (const tool of service.tools) {
         const ownedTool = { ...tool, execute: (...args: Parameters<typeof tool.execute>) => service.run(() => tool.execute(...args)) };
@@ -26,27 +29,34 @@ export function apply(ctx: Context): void {
         }, lifetime));
     }
     ctx.systemPrompt.section({ name: "fatloss:rules", order: 500, interpolate: false, text: systemPrompt });
+    registerFatlossWriteConfirmation(ctx, agent => cancelled.has(agent), lifetime);
     ctx.on("agent/created", ({ agent }) => {
         const local = agent.ctx;
-        local.tools.presentAs("native");
-        registerFatlossToolPolicy(local, service.host, service.tools.map(tool => tool.name));
-        local.tools.guard(exec => cancelled.has(agent) && /^(add_|update_|delete_|create_|invalidate_|generate_)/.test(exec.name) ? "用户已取消本次操作，请等待新的用户输入。" : undefined);
-        let claimedUserId: string | undefined;
-        const coordinator = new MemoryCoordinator({
-            store: service.memories, readMessages: () => readMessages(agent), getProfile: () => service.repository.get(),
-            isIdle: () => agent.status === "idle" && agent.inbox.nextTurn.length === 0 && agent.inbox.nextStep.length === 0,
-            extract: (input, signal) => generateText(local, agent, MEMORY_EXTRACTION_PROMPT, input, signal),
-            notify: message => ctx.logger.info(message),
+        ownAgent(local, () => {
+            const removePresentation = local.tools.presentAs("native");
+            const removeToolPolicy = registerFatlossToolPolicy(local, service.host, service.tools.map(tool => tool.name));
+            const removeGuard = local.tools.guard(exec => cancelled.has(agent) && /^(add_|update_|delete_|create_|invalidate_|generate_)/.test(exec.name) ? "用户已取消本次操作，请等待新的用户输入。" : undefined);
+            let claimedUserId: string | undefined;
+            const coordinator = new MemoryCoordinator({
+                store: service.memories, readMessages: () => readMessages(agent), getProfile: () => service.repository.get(),
+                isIdle: () => agent.status === "idle" && agent.inbox.nextTurn.length === 0 && agent.inbox.nextStep.length === 0,
+                extract: (input, signal) => generateText(local, agent, MEMORY_EXTRACTION_PROMPT, input, signal),
+                notify: message => ctx.logger.info(message),
+            });
+            const removeMemoryContext = local.systemPrompt.context({ name: "fatloss:memory", order: 900, interpolate: false, required: true, text: () => {
+                const latest = readMessages(agent).filter(message => message.role === "user").at(-1);
+                return `${service.memories.context()}\n以上是当前唯一有效的长期记忆快照。旧快照仅为历史，不可将删除或失效内容当作当前了解。\n当前用户消息标识：${claimedUserId ?? latest?.id ?? "无"}`;
+            } });
+            const removeInserted = local.on("agent/inbox/inserted", ({ message }) => { coordinator.input(); if (message.source.kind === "user") cancelled.delete(agent); });
+            const removeClaimed = local.on("agent/inbox/claimed", ({ message }) => { if (["user", "user-question-reply"].includes(message.source.kind)) claimedUserId = `dsh:${message.id}`; });
+            const removeStatus = local.on("agent/status", ({ status }) => { if (status === "idle") coordinator.settled(); else coordinator.input(); });
+            coordinator.resume();
+            return () => {
+                coordinator.stop();
+                removeStatus(); removeClaimed(); removeInserted(); removeMemoryContext();
+                removeGuard(); removeToolPolicy(); removePresentation();
+            };
         });
-        local.systemPrompt.context({ name: "fatloss:memory", order: 900, interpolate: false, required: true, text: () => {
-            const latest = readMessages(agent).filter(message => message.role === "user").at(-1);
-            return `${service.memories.context()}\n以上是当前唯一有效的长期记忆快照。旧快照仅为历史，不可将删除或失效内容当作当前了解。\n当前用户消息标识：${claimedUserId ?? latest?.id ?? "无"}`;
-        } });
-        local.on("agent/inbox/inserted", ({ message }) => { coordinator.input(); if (message.source.kind === "user") cancelled.delete(agent); });
-        local.on("agent/inbox/claimed", ({ message }) => { if (["user", "user-question-reply"].includes(message.source.kind)) claimedUserId = `dsh:${message.id}`; });
-        local.on("agent/status", ({ status }) => { if (status === "idle") coordinator.settled(); else coordinator.input(); });
-        local.effect(() => () => coordinator.stop());
-        coordinator.resume();
         return undefined;
     });
     ctx.commands.register({ name: "profile", description: "查看当前减脂画像", handler: () => ({ kind: "success", text: service.profile().profile ? JSON.stringify(service.profile().profile, null, 2) : "请打开减脂陪伴页面完成建档。" }) });

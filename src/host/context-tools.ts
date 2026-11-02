@@ -5,7 +5,7 @@ export const BILLION_CONTEXT_TOOLS = [
     "compress", "decompress", "search_context", "acp_status", "acp_cache", "acp_retrieve", "acp_read_original_image",
 ] as const;
 
-export function registerFatlossToolPolicy(local: Context, host: Context, businessNames: string[]): void {
+export function registerFatlossToolPolicy(local: Context, host: Context, businessNames: string[]): () => void {
     let current = "";
     let release: (() => void) | undefined;
     const refresh = () => {
@@ -20,5 +20,6 @@ export function registerFatlossToolPolicy(local: Context, host: Context, busines
     };
     refresh();
     // 代理启动后的工具注册可能晚于会话创建；请求装配前再检查一次。
-    local.on("agent/pre-step", (_event, next) => { refresh(); return next(); });
+    const removeListener = local.on("agent/pre-step", (_event, next) => { refresh(); return next(); });
+    return () => { removeListener(); release?.(); };
 }
