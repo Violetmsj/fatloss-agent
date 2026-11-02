@@ -1,14 +1,14 @@
-import { PiCalorieResearcher, type CalorieResearcher } from "./calorie-researcher.ts";
+import { ValidatedCalorieResearcher, type CalorieResearcher } from "./calorie-researcher.ts";
 import { FoodCompositionCatalog, scaleFoodComposition } from "./food-composition.ts";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { FatlossToolContext } from "./tools/definition.ts";
 
 export async function estimateFoodNutrition(
     foodDescription: string,
     grams: number | null,
     catalog = new FoodCompositionCatalog(),
-    researcher: CalorieResearcher = new PiCalorieResearcher(),
+    researcher: CalorieResearcher = new ValidatedCalorieResearcher(),
     signal?: AbortSignal,
-    ctx?: ExtensionContext,
+    ctx?: FatlossToolContext,
 ) {
     // 本地数据优先：只有缺文件、无可靠匹配或混合菜无法命中时才把描述交给联网子 Agent。
     const match = catalog.lookup(foodDescription);

@@ -1,4 +1,4 @@
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "./definition.ts";
 import { Type } from "typebox";
 
 import { ProfileNotFoundError, ProfileRepository, ProfileStorageError, ProfileUpdateValidationError } from "../database.ts";

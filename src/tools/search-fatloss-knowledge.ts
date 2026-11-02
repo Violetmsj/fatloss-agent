@@ -1,4 +1,4 @@
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "./definition.ts";
 import { Type } from "typebox";
 
 import { type KnowledgeService, createKnowledgeService } from "../knowledge/service.ts";

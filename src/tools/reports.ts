@@ -1,13 +1,13 @@
-import { defineTool, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { defineTool, type FatlossToolContext } from "./definition.ts";
 import { Type } from "typebox";
 
 import type { ProfileRepository } from "../database.ts";
 import { REPORT_SUMMARY_PROMPT, ReportService } from "../reports/service.ts";
 import { REPORT_TITLES, REPORT_TYPES, type ReportRequest, type ReportView } from "../reports/types.ts";
 
-function reportResult(report: ReportView) {
+function reportResult(report: ReportView, context?: FatlossToolContext) {
     const details = {
-        reportId: report.id, reportUrl: `/reports/${report.id}`, title: REPORT_TITLES[report.type],
+        reportId: report.id, reportUrl: context?.reportUrl?.(report.id) ?? `/reports/${report.id}`, title: REPORT_TITLES[report.type],
         version: report.version, stale: report.stale, summaryStatus: report.summaryStatus,
     };
     return {
@@ -17,18 +17,13 @@ function reportResult(report: ReportView) {
 }
 
 export function createReportTools(repository: ProfileRepository, service = new ReportService(repository.db)) {
-    const generate = async (request: ReportRequest, signal: AbortSignal | undefined, ctx: ExtensionContext) => reportResult(await service.generate(request, {
-        model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : null,
+    const generate = async (request: ReportRequest, signal: AbortSignal | undefined, ctx: FatlossToolContext) => reportResult(await service.generate(request, {
+        model: ctx.modelName ?? null,
         generate: async (input, abortSignal) => {
-            if (!ctx.model) throw new Error("当前会话没有可用于生成报告总结的模型");
-            const response = await ctx.modelRegistry.complete(ctx.model, {
-                systemPrompt: REPORT_SUMMARY_PROMPT,
-                messages: [{ role: "user", content: input, timestamp: service.now() }],
-            }, { signal: abortSignal });
-            if (["error", "aborted", "length"].includes(response.stopReason)) throw new Error("报告总结未完整返回");
-            return response.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+            if (!ctx.generateText) throw new Error("当前会话没有可用于生成报告总结的模型");
+            return ctx.generateText(REPORT_SUMMARY_PROMPT, input, abortSignal);
         },
-    }, signal));
+    }, signal), ctx);
     const regenerate = Type.Optional(Type.Boolean({ description: "仅在用户明确要求更新已存报告或重试失败总结时传 true；默认直接读取。" }));
     const description = "读取或生成固定模板报告并保存统计快照和 AI 总结。已有报告默认复用；用户明确更新或重试时 regenerate=true。相对日期先单独调用 get_current_time。";
     return [
@@ -72,10 +67,10 @@ export function createReportTools(repository: ProfileRepository, service = new R
         defineTool({
             name: "get_report", label: "读取减脂报告", description: "按 list_reports 返回的报告 ID 读取指定历史版本、Markdown 文本和过期状态。不重新计算已存指标，不调用模型。",
             parameters: Type.Object({ id: Type.String({ minLength: 1 }) }, { additionalProperties: false }),
-            async execute(_id, { id }) {
+            async execute(_id, { id }, _signal, _update, ctx) {
                 const report = service.get(id);
                 if (!report) throw new Error("报告不存在，请先查询已保存报告");
-                return reportResult(report);
+                return reportResult(report, ctx);
             },
         }),
     ];

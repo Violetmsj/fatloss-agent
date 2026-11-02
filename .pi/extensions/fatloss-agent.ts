@@ -5,6 +5,7 @@ import { MemoryStore } from "../../src/memory-store.ts";
 import { registerMemoryRuntime } from "../../src/memory-runtime.ts";
 import { formatProfile } from "../../src/profile.ts";
 import { runOnboarding } from "../../src/onboarding.ts";
+import { piTool } from "../../src/pi/tool-context.ts";
 import { createFatlossTools } from "../../src/tools/index.ts";
 
 export default function fatlossAgentExtension(pi: ExtensionAPI) {
@@ -34,7 +35,7 @@ export default function fatlossAgentExtension(pi: ExtensionAPI) {
   };
 
   // 工具定义与扩展生命周期分离；新增工具只需加入 src/tools/index.ts。
-  for (const tool of tools) pi.registerTool(tool);
+  for (const tool of tools) pi.registerTool(piTool(tool));
 
   pi.registerCommand("onboard", {
     description: "填写或覆盖当前减脂画像",

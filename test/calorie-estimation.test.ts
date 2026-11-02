@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createResearchResourceLoader, PiCalorieResearcher, RESEARCH_TOOL_ALLOWLIST, type CalorieResearcher } from "../src/calorie-researcher.ts";
+import { createResearchResourceLoader, RESEARCH_TOOL_ALLOWLIST } from "../src/pi/calorie-researcher.ts";
+import { ValidatedCalorieResearcher as PiCalorieResearcher, type CalorieResearcher } from "../src/calorie-researcher.ts";
 import { calculateActiveCaloriesFromMet, calculateMetRange, normalizeWearableCalories } from "../src/exercise-calculation.ts";
 import { FoodCompositionCatalog, scaleFoodComposition } from "../src/food-composition.ts";
 import { estimateFoodNutrition } from "../src/nutrition-estimation.ts";

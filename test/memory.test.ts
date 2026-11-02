@@ -1,3 +1,4 @@
+import { createPiToolContext } from "../src/pi/tool-context.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -360,7 +361,7 @@ test("五种记忆工具注册，直接写入只接受当前用户证据及正�
     assert.equal(tools.length, 5);
     const entries = [entry("old", "user", "旧话"), entry("u1", "user", "请记住，我不喜欢被催促")];
     const ctx = { sessionManager: { getBranch: () => entries, getSessionId: () => "session" } } as unknown as ExtensionContext;
-    const run = (name: string, args: unknown) => tools.find((tool) => tool.name === name)!.execute("call", args as never, undefined, undefined, ctx);
+    const run = (name: string, args: unknown) => tools.find((tool) => tool.name === name)!.execute("call", args as never, undefined, undefined, createPiToolContext(ctx));
     await assert.rejects(run("create_memory", { content: "旧话", category: "偏好", evidence: [{ messageId: "old", quote: "旧话" }] }), /真实用户/);
     await run("create_memory", { content: "不喜欢被催促", category: "偏好", evidence: [{ messageId: "u1", quote: "不喜欢被催促" }] });
     const saved = store.list().items[0];

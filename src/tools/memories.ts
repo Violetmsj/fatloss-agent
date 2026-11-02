@@ -1,15 +1,14 @@
-import { defineTool, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { defineTool, type FatlossToolContext } from "./definition.ts";
 import { Type } from "typebox";
 
-import { readMemoryMessages } from "../memory-runtime.ts";
 import { MemoryConflictError, MemoryStore } from "../memory-store.ts";
 import { memoryCategorySchema, memoryEvidenceSchema, memoryFields, type MemoryCandidate } from "../memory.ts";
 
 /** 工具只负责让主 Agent 能调用业务操作；真正的来源校验与 SQL 都收口到 MemoryStore。 */
 export function createMemoryTools(store: MemoryStore) {
     // 主 Agent 只允许以本轮最新用户消息为依据立即写入；更早的明确事实交给批处理。
-    const write = (candidate: MemoryCandidate, ctx: ExtensionContext, version?: number) => {
-        const messages = readMemoryMessages(ctx.sessionManager.getBranch(), ctx.sessionManager.getSessionId());
+    const write = (candidate: MemoryCandidate, ctx: FatlossToolContext, version?: number) => {
+        const messages = ctx.readMessages?.() ?? [];
         const latest = messages.filter((message) => message.role === "user").at(-1);
         if (!latest) throw new Error("没有可引用的用户消息。");
         if (candidate.action !== "create") {

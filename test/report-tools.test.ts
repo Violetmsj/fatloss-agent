@@ -1,3 +1,4 @@
+import { createPiToolContext } from "../src/pi/tool-context.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -42,15 +43,15 @@ test("七个报告工具统一注册，独立模型请求只接收统计并返�
     const daily = tools.find(tool => tool.name === "generate_daily_report")!;
     assert.equal(Value.Check(daily.parameters, { date: "2025-01-01" }), true);
     assert.equal(Value.Check(daily.parameters, { date: "2025-01-01", script: "bad" }), false);
-    const generated = await daily.execute("daily", { date: "2025-01-01" } as never, undefined, undefined, ctx);
+    const generated = await daily.execute("daily", { date: "2025-01-01" } as never, undefined, undefined, createPiToolContext(ctx));
     const detail = generated.details as { reportId: string; reportUrl: string };
     assert.match(generated.content[0].type === "text" ? generated.content[0].text : "", /当日能量参考/);
     assert.equal(detail.reportUrl, `/reports/${detail.reportId}`);
     const get = tools.find(tool => tool.name === "get_report")!;
-    const read = await get.execute("read", { id: detail.reportId } as never, undefined, undefined, ctx);
+    const read = await get.execute("read", { id: detail.reportId } as never, undefined, undefined, createPiToolContext(ctx));
     assert.deepEqual(read.details, generated.details);
     assert.equal(requests, 1);
-    await assert.rejects(() => get.execute("missing", { id: "missing" } as never, undefined, undefined, ctx), /不存在/);
+    await assert.rejects(() => get.execute("missing", { id: "missing" } as never, undefined, undefined, createPiToolContext(ctx)), /不存在/);
 });
 
 test("实时流和 JSONL 历史恢复相同报告链接，原始快照与任意 URL 不会下发", async () => {

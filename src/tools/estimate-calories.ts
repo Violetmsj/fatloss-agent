@@ -1,7 +1,7 @@
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "./definition.ts";
 import { Type } from "typebox";
 
-import { PiCalorieResearcher, type CalorieResearcher } from "../calorie-researcher.ts";
+import { ValidatedCalorieResearcher, type CalorieResearcher } from "../calorie-researcher.ts";
 import { calculateMetRange, normalizeWearableCalories } from "../exercise-calculation.ts";
 import { FoodCompositionCatalog } from "../food-composition.ts";
 import { estimateFoodNutrition } from "../nutrition-estimation.ts";
@@ -14,7 +14,7 @@ export interface EstimationToolDependencies {
 
 export function createEstimationTools(repository: ProfileRepository, dependencies: EstimationToolDependencies = {}) {
     const catalog = dependencies.catalog ?? new FoodCompositionCatalog();
-    const researcher = dependencies.researcher ?? new PiCalorieResearcher();
+    const researcher = dependencies.researcher ?? new ValidatedCalorieResearcher();
     return [
         defineTool({
             name: "estimate_food_nutrition",
