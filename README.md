@@ -1,8 +1,14 @@
-# 减脂 TUI Agent
+# 减脂陪伴 Agent
 
-一个仅供个人使用的中文减脂陪伴助手。它运行在 [pi](https://github.com/earendil-works/pi) 的原生终端 TUI 中，首次使用时采集减脂问卷，并将当前画像保存到本地 SQLite。
+当前主要入口为 **DeepSeek Harness 桌面插件**（兼容 0.2.1-rc.5），提供独立减脂 Agent、建档/画像及报告页面。安装、数据副本导入和配置见 [DSH 插件说明](packages/dsh-fatloss/README.md)。
 
-## 启动
+减脂预设在当前 profile 启用 Billion Context 时使用其上下文压缩；未安装时使用 DSH 官方 Compaction Basic。安装或启停后重启 DSH，使预设重新装配。
+
+原 pi TUI、Express 后端与 Vue WebUI 保留为封存入口，下面的原有启动说明仍可使用；DSH 日常运行不依赖这些服务。迁移后的业务数据库独立保存，旧聊天不会自动导入。
+
+一个仅供个人使用的中文减脂陪伴助手。DSH 插件在宿主内提供聊天、建档、画像和报告；共享领域代码同时支持保留的 [pi](https://github.com/earendil-works/pi) 入口。
+
+## 旧 pi TUI 启动（封存）
 
 要求：Node.js 24（或至少 Node.js 22.19）。
 

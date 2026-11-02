@@ -8,8 +8,8 @@ const MAX_BATCH_SIZE = 20;
 
 type FetchFunction = typeof fetch;
 
-function getRequiredEnvironment(name: "DASHSCOPE_API_KEY" | "DASHSCOPE_EMBEDDING_URL"): string {
-  const value = process.env[name]?.trim();
+function getRequiredEnvironment(name: "DASHSCOPE_API_KEY" | "DASHSCOPE_EMBEDDING_URL", configuration: Record<string, string | undefined>): string {
+  const value = (configuration[name] ?? process.env[name])?.trim();
   if (!value) throw new Error(`知识库未配置 ${name}。请按 README 设置后重试。`);
   return value;
 }
@@ -41,7 +41,7 @@ function parseEmbeddings(body: unknown, expectedCount: number): number[][] {
 /** 百炼 OpenAI 兼容接口适配器；应用自行计算向量，Chroma 不持有 API Key。 */
 export class DashScopeEmbeddingClient implements EmbeddingClient {
   // 可注入 fetch，单元测试无需真实 API Key 或网络请求。
-  constructor(private readonly fetchFunction: FetchFunction = fetch) {}
+  constructor(private readonly fetchFunction: FetchFunction = fetch, private readonly configuration: Record<string, string | undefined> = {}) {}
 
   async embedDocuments(texts: string[]): Promise<number[][]> {
     const all: number[][] = [];
@@ -58,8 +58,8 @@ export class DashScopeEmbeddingClient implements EmbeddingClient {
 
   private async embedBatch(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
-    const apiKey = getRequiredEnvironment("DASHSCOPE_API_KEY");
-    const url = getRequiredEnvironment("DASHSCOPE_EMBEDDING_URL");
+    const apiKey = getRequiredEnvironment("DASHSCOPE_API_KEY", this.configuration);
+    const url = getRequiredEnvironment("DASHSCOPE_EMBEDDING_URL", this.configuration);
     // 使用 OpenAI 兼容的 embeddings 协议；只发送文档或用户查询文本，不发送画像数据。
     const response = await this.fetchFunction(url, {
       method: "POST",

@@ -2,9 +2,13 @@
 
 ## 项目架构
 
-这是一个单仓库、单用户的中文减脂陪伴 Agent。根项目承担 Node.js 后端、pi-agent 运行时、TUI 扩展、SQLite 长期数据和 Chroma RAG；`web/` 是独立的 Vue 工作区，只通过 `/api` 使用后端能力，不直接访问模型、数据库或会话文件。
+这是一个单仓库、单用户的中文减脂陪伴 Agent。主要入口为 `packages/dsh-fatloss/` 的 DSH 桌面插件，首版锁定 0.2.1-rc.5；pi TUI 和 `web/` 的 Vue/Express 入口保留为封存维护。DSH 日常使用不需要启动旧后端或 WebUI。
 
-两种交互入口共用同一套业务能力：
+DSH 宿主与 React 客户端通过 `fatloss` Remote 通信。插件使用 `$DSH_HOME/storages/fatloss-agent/` 的独立 SQLite，旧 `data/` 仅作为一次性一致性备份的来源，后续互不写入。不搬动 Chroma 向量目录，不自动读取旧 `.env`。
+
+共享业务工具定义位于 `src/tools/definition.ts`，仅接受模型生成、检索、问卷和消息证据等能力。pi 类型与模型实现留在 `src/pi/`，DSH 适配留在插件包内；共享层不得重新引入宿主 SDK。`src/memory-coordinator.ts` 是两端共用的记忆调度器。
+
+以下两个旧交互入口继续共用同一套业务能力：
 
 - TUI：pi CLI 加载 `.pi/extensions/fatloss-agent.ts`，直接使用 Agent 工具、画像和长期记忆。
 - Web：浏览器请求 Express，后端为每个聊天会话恢复独立 `AgentSession`，再将 pi-agent 事件转换成 AI SDK UI Message Stream。
@@ -147,6 +151,8 @@ ChatView.vue
 - 持续的能量摄入低于消耗通常有助于形成减脂趋势，但实际结果会受到记录误差、代谢适应、体脂测量误差和执行情况影响，不承诺精确结果。
 
 ## 构建、测试与开发命令
+
+DSH 使用 Node.js 24：`npm run dsh:typecheck`、`npm run dsh:test`、`npm run dsh:build` 和 `npm run dsh:pack`。发布产物必须独立于仓库源码与 pi 包，不能把验收假模型、用户数据或凭据打入包内。DSH 改动还须运行根项目要求的回归检查；只在隔离数据副本中进行写入验收。
 
 使用 Node.js 24（最低支持 Node.js 22.19），通过 `npm install` 安装依赖。
 

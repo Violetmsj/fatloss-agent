@@ -1,0 +1,22 @@
+- insert:
+    - id: fatloss-host
+      name: dsh-plugin-fatloss-agent
+    - id: fatloss-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      inject: [fatlossCompactionReady]
+      config:
+        id: fatloss
+        name: 减脂陪伴
+        description: 中文减脂陪伴、饮食运动记录与长期记忆
+        plugins:
+          - name: dsh-plugin-fatloss-agent/agent
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'

@@ -2,7 +2,8 @@
   "name": "fatloss-agent",
   "private": true,
   "workspaces": [
-    "web"
+    "web",
+    "packages/dsh-fatloss"
   ],
   "type": "module",
   "scripts": {
@@ -18,7 +19,11 @@
     "memory:eval": "node --env-file=.env --import tsx src/memory-evaluation.ts",
     "food-data:sync": "node --import tsx scripts/sync-food-data.ts",
     "test": "tsx --test test/**/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dsh:build": "npm --workspace dsh-plugin-fatloss-agent run build",
+    "dsh:typecheck": "npm --workspace dsh-plugin-fatloss-agent run typecheck",
+    "dsh:test": "npm --workspace dsh-plugin-fatloss-agent run test",
+    "dsh:pack": "mkdir -p dist && npm --workspace dsh-plugin-fatloss-agent run pack:plugin"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.85.1",
